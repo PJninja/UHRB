@@ -483,6 +483,7 @@
 
     .bio-aside {
       order: -1;
+      position: static;
     }
 
     .monster-name {
