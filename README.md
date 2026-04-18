@@ -1,10 +1,10 @@
 # Unspeakable Horrors Race Betting (UHRB)
 
-UHRM is a small Web game where you bet on the outcome of a race between unspeakable monstrosities.
+UHRB is a browser-based game where you bet candies on the outcome of a race between procedurally generated unspeakable monstrosities.
 
 ## Tech Stack
 
-The project is two separate Node.js applications — a Svelte SPA (client) and a Fastify API server — that communicate via WebSocket and REST.
+The project is two separate Node.js applications — a Svelte 5 SPA (client) and a Fastify API server — that communicate via WebSocket and REST.
 
 ### Client (`/` — root)
 
@@ -22,60 +22,134 @@ The project is two separate Node.js applications — a Svelte SPA (client) and a
 | **Fastify** | ^4.26.0 | HTTP server framework — REST routes, request lifecycle, built-in Pino integration |
 | **@fastify/websocket** | ^10.0.0 | WebSocket support; real-time `race:update` push events to all connected clients |
 | **@fastify/cors** | ^9.0.0 | Cross-Origin Resource Sharing — allows the Vite dev server (`localhost:5173`) to call the API (`localhost:3000`) |
+| **@fastify/rate-limit** | ^9.1.0 | Global and per-route request rate limiting to prevent abuse |
 | **nanoid** | ^5.0.0 | Generates unique IDs for races and sessions |
 | **seedrandom** | ^3.0.5 | Seeded pseudo-random number generator — makes monster generation and race outcomes deterministic and reproducible from a seed string |
 | **pino** | ^8.18.0 | Structured JSON logger; used via a shared instance in `src/utils/logger.js`; service files create child loggers with a `module` label |
 | **pino-pretty** | ^10.3.0 | Development-only log formatter — converts Pino's JSON output to human-readable, colour-coded lines; disabled in production |
 
+## Setup
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Install dependencies
+
+```bash
+# Client (root)
+npm install
+
+# Server
+cd server && npm install
+```
+
+### Environment variables
+
+**Client** — create `.env` in the root directory:
+```
+VITE_API_URL=http://localhost:3000/api
+```
+
+**Server** — create `.env` in `/server`:
+```
+PORT=3000
+HOST=0.0.0.0
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:5173
+SESSION_TTL_MS=86400000
+LOG_LEVEL=info
+```
+
+## Running the App
+
+Both servers must be running simultaneously.
+
+```bash
+# Terminal 1 — API server (from /server)
+npm run dev
+
+# Terminal 2 — Vite dev server (from root)
+npm run dev
+```
+
+- Client: http://localhost:5173
+- API: http://localhost:3000
+
+## Build
+
+```bash
+# Build the client for production (from root)
+npm run build
+
+# Preview the production build locally
+npm run preview
+
+# Run the server in production mode (from /server)
+npm start
+```
+
+The production build outputs to `/dist`. Serve it with any static file host and point `VITE_API_URL` at your deployed API server.
+
 ## Core Loop
-- Players get a starting balance of 100 candies
-- They can bet on one monster (out of 4-6) to win the upcoming race.
-- Races occur every 30-300 seconds.
-- Players can inspect each monster, the time between races being limited makes inspecting important.
-- Some Monsters are less likely to win but have higher payouts, while others are more consistent but pay less.
 
-## Monsters
-Monsters are procedurally generated with a bio and traits. They may persist across races sometimes,
-but in general they are generated on the fly.
-Each bio and appearance is assigned a letter (A, C, G, T). Name and location are not assigned letters but are generated from a pool of names and locations.
-The total combination of letters is what makes up the monsters traits based on the Trait Table.
+- Players get a starting balance of 100 candies.
+- They can bet on one monster (out of 4–6) to win the upcoming race.
+- Races occur every 30–300 seconds.
+- Players can inspect each monster's bio before betting; the limited time window makes scouting meaningful.
+- Some monsters are less likely to win but pay out more; others are more consistent but pay less.
 
-### BIO
-- Unique Name from two randomized names (Sometimes only one)
-- Location Found (e.g. "The Depths of the Abyss", "The Forgotten City", "Cleveland")
-- Brief Description (1-2 sentences)
-- Blurb about them (e.g. "They have been disqualified from races in other dimensions")
-- Racing Style (e.g. "Crawls" or "Slithers")
-    
-### APPEARANCE
-- Body Type (e.g. "Humanoid", "Quadruped", "Amorphous")
-- Distinctive Features (e.g. "Glowing Eyes", "Tentacles", "Spikes")
-- Height (0-300 meters)
-- Weight (0-1000 tons)
-- Temperment (e.g. "Aggressive", "Calm", "Chaos-Incarnate")
-    
-### TRAITS
-- Speed (1-10) - Number of A's a Monster has
-- Endurance (1-10) - Number of C's a Monster has
-- Madness (1-10) - Number of G's a Monster has
-- Unpredictability (1-10) - Number of T's a Monster has
-- Luck (1-10) - The more letter variations a Monster has, the higher
-- Value (1-100) - Hidden from user, randomized, 50 means the Monster is fairly priced.
-50 Value means their payout in fairly proportional to the sum of their stats. 100 Value means their payout is 3x what it should be, 0 Value means their payout is 0.33x what it should be.
+## HORRORS
 
-## Visuals
-- Simple, mix of Animal Crossing and Eldritch Horror vibes
-- Animal Crossing shapes and design but on a dark color palette with Cthonic symbols and motifs
+Horrors are procedurally generated with a bio and traits. They may persist across races occasionally, but are generally generated fresh each race.
+
+Each bio and appearance entry is assigned a letter (A, C, G, T). Name and location are cosmetic only — no letter assignment. The total letter combination across all selected entries determines the monster's stats via the Trait Table below.
+
+### Bio
+
+- Unique name from two randomized name parts (sometimes one)
+- Location found (e.g. "The Depths of the Abyss", "The Forgotten City", "Cleveland")
+- Brief description (1–2 sentences)
+- Blurb (e.g. "They have been disqualified from races in other dimensions")
+- Racing style (e.g. "Crawls" or "Slithers")
+
+### Appearance
+
+- Body type (e.g. "Humanoid", "Quadruped", "Amorphous")
+- Distinctive features (e.g. "Glowing Eyes", "Tentacles", "Spikes")
+- Height (0–300 meters)
+- Weight (0–1000 tons)
+- Temperament (e.g. "Aggressive", "Calm", "Chaos-Incarnate")
+
+### Traits
+
+Stat numbers are never displayed to players — only inferred through prose, visual effects, and cryptic scholar hints.
+
+| Trait | Letter | Effect |
+|---|---|---|
+| **Speed** | A | Controls surge frequency in the race |
+| **Endurance** | C | Controls consistency across the race |
+| **Madness** | G | Controls unpredictability |
+| **Strength** | T | Controls burst amplitude |
+| **Luck** | — | Higher when the monster has more letter variety |
+| **Value** | — | Hidden; skews payout relative to true odds (50 = fair, 100 = 3× overpay, 0 = 0.33× underpay) |
 
 ## Pages
-- Home Page - This is where the next race timer is, where you can place bets, and see all the monsters running in that race.
-- Bio - Clicking on a monster from the Home Page takes you to their Bio Page, where you can see all of their traits and stats.
-- Race Page - This is where you can watch the race, see progress bars for each monster as well as "live" commentary.
-- Results Page - This is where you see the results, how the race went, and your winnings or losses.
-- History Page - This is where you can see the history of your races, bets, and outcomes. As well as stats like most candy earned in 1 bet and most candy lost in 1 bet.
+
+- **Home** — race timer, monster roster, and betting panel.
+- **Bio** — full monster dossier with prose stats and betting slip.
+- **Race** — live race animation with progress bars.
+- **Results** — outcome, race summary, and payout.
+- **History** — past bets log with aggregate stats (most earned, most lost, etc.).
+
+## Visual Style
+
+Dark eldritch aesthetic — Warhammer 40K-style gothic fonts layered over an ancient scroll palette. Deep blacks, decayed parchment tones, and glowing accent colours.
 
 ## Stretch Goals
-- Leaderboard - A leaderboard of the top 10 players with the most candy.
-- Monster Visuals - Adding simple visuals for each monster based on their traits.
-- Friend System - Allowing players to add friends and bet on the same races.
-- More Monster Traits - Adding more traits to make the monsters more unique and interesting.
+
+- **Leaderboard** — top 10 players by candy count.
+- **Monster visuals** — procedurally styled illustrations based on traits.
+- **Friend system** — add friends and bet on the same races together.
+- **More traits** — expand the trait system for greater monster variety.
