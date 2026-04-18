@@ -92,6 +92,39 @@ npm start
 
 The production build outputs to `/dist`. Serve it with any static file host and point `VITE_API_URL` at your deployed API server.
 
+## Deployment
+
+### Frontend — Netlify
+
+The client is configured for Netlify via `netlify.toml` (build command, publish directory, SPA fallback redirect).
+
+**Steps:**
+
+1. Push the repo to GitHub.
+2. In Netlify, create a new site from the repo — build settings are picked up automatically from `netlify.toml`.
+3. In **Site settings → Environment variables**, add:
+   ```
+   VITE_API_URL=https://your-api-server.example.com/api
+   ```
+4. Deploy. Netlify runs `npm run build` and serves `/dist`.
+
+### Backend — external host required
+
+Netlify Functions do not support WebSockets, so the Fastify server must be hosted separately. Good options: [Railway](https://railway.app), [Render](https://render.com), [Fly.io](https://fly.io).
+
+Regardless of host, set these environment variables on the server:
+
+```
+PORT=3000
+HOST=0.0.0.0
+NODE_ENV=production
+CORS_ORIGIN=https://your-netlify-site.netlify.app
+SESSION_TTL_MS=86400000
+LOG_LEVEL=info
+```
+
+Set `CORS_ORIGIN` to your Netlify site URL so the browser can reach the API. Then update `VITE_API_URL` in Netlify to point at the deployed server before triggering a redeploy.
+
 ## Core Loop
 
 - Players get a starting balance of 100 candies.
