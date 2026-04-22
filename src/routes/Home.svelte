@@ -19,10 +19,6 @@
     selectedMonster = monster;
   }
 
-  $: if ($currentBet) {
-    selectedMonster = null;
-  }
-
   $: selectedMonsterId = selectedMonster?.id || $currentBet?.monsterId;
 
   onMount(() => {
@@ -115,7 +111,7 @@
       </div>
 
       <aside class="betting-section">
-        <BettingSlip {selectedMonster} monsters={$monsters} />
+        <BettingSlip {selectedMonster} monsters={$monsters} on:placed={() => { selectedMonster = null; }} />
       </aside>
     </div>
   </div>

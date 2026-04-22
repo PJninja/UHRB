@@ -34,13 +34,28 @@ export async function validateSession(sessionId) {
 
 /**
  * Get current race state
- * @returns {Promise<{raceId: string, monsters: array, nextRaceTime: number, state: string, odds: object, timeRemaining: number, bettingClosed: boolean}>}
+ * @returns {Promise<{raceId: string, monsters: array, nextRaceTime: number, state: string, odds: object, timeRemaining: number}>}
  */
 export async function getCurrentRace() {
   const response = await fetch(`${API_BASE}/race/current`);
 
   if (!response.ok) {
     throw new Error(`Failed to get current race: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get bio-only fields for a monster in the current race
+ * @param {string} monsterId
+ * @returns {Promise<{id: string, description: string, blurb: string, height: number, weight: number, features: string}>}
+ */
+export async function getMonsterBio(monsterId) {
+  const response = await fetch(`${API_BASE}/monster/${monsterId}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to get monster bio: ${response.statusText}`);
   }
 
   return response.json();

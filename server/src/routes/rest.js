@@ -45,6 +45,24 @@ export async function registerRestRoutes(fastify) {
     return racePayload(getCurrentRace());
   });
 
+  // Get bio-only fields for a monster in the current race
+  fastify.get('/api/monster/:id', async (request, reply) => {
+    const { id } = request.params;
+    const race = getCurrentRace();
+    const monster = race.monsters.find(m => m.id === id);
+    if (!monster) {
+      return reply.code(404).send({ error: 'Monster not found' });
+    }
+    return {
+      id: monster.id,
+      description: monster.description,
+      blurb: monster.blurb,
+      height: monster.height,
+      weight: monster.weight,
+      features: monster.features,
+    };
+  });
+
   // Place a bet
   fastify.post('/api/race/:raceId/bet', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const { raceId } = request.params;

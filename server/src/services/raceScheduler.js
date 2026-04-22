@@ -9,8 +9,9 @@ import { logger } from '../utils/logger.js';
 const log = logger.child({ module: 'raceScheduler' });
 
 /**
- * Strip server-only fields from a monster before sending to clients.
- * Removes `value` (hidden payout modifier) and marks the returning champion.
+ * Strip server-only and bio-only fields from a monster before sending to clients.
+ * Removes `value` (hidden payout modifier), bio prose fields (fetched on demand via
+ * GET /api/monster/:id), and marks the returning champion.
  * @param {object} monster
  * @param {boolean} isChampion
  */
@@ -19,7 +20,8 @@ export function sanitizeMonster(monster, isChampion = false) {
   // Invert value → favor: value 1–20 = favor 5 (Beloved), value 81–100 = favor 1 (Despised).
   // High favor = crowd expects them to win = lower payout. Low favor = underdog = higher payout.
   const audienceFavor = Math.max(1, 6 - Math.ceil(value / 20));
-  return { ...monster, traits: visibleTraits, isReturningChampion: isChampion, audienceFavor };
+  const { description, blurb, height, weight, features, ...rest } = monster;
+  return { ...rest, traits: visibleTraits, isReturningChampion: isChampion, audienceFavor };
 }
 
 export function racePayload(race) {
@@ -32,7 +34,6 @@ export function racePayload(race) {
     state: race.state,
     odds: race.odds,
     betTotals: race.betTotals,
-    bettingClosed: race.bettingClosed,
     // Sent once racing begins so the client animation uses the same duration and
     // can fast-forward to the correct progress when joining mid-race.
     raceDuration: race.raceDuration || null,
@@ -54,7 +55,7 @@ let currentRace = {
   id: null,
   monsters: [],
   nextRaceTime: null,
-  state: 'waiting', // 'waiting' | 'racing' | 'finished'
+  state: 'waiting', // 'waiting' | 'closed' | 'racing' | 'finished'
   raceStartedAt: null,
   raceDuration: null,
   winner: null,
@@ -132,7 +133,6 @@ export function scheduleNextRace() {
     rankings: [],
     odds,
     betTotals,
-    bettingClosed: false,
   };
 
   log.info({ raceId, delayMs: delay, monsterCount: monsters.length }, 'race scheduled');
@@ -163,7 +163,7 @@ export function scheduleNextRace() {
 function closeBetting() {
   if (currentRace.state === 'waiting') {
     log.info({ raceId: currentRace.id }, 'betting closed');
-    currentRace.bettingClosed = true;
+    currentRace.state = 'closed';
     broadcast('race:update', racePayload(currentRace));
   }
 }
@@ -264,5 +264,5 @@ export function getTimeRemaining() {
  * @returns {boolean}
  */
 export function isBettingAllowed() {
-  return currentRace.state === 'waiting' && !currentRace.bettingClosed;
+  return currentRace.state === 'waiting';
 }

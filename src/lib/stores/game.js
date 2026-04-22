@@ -18,11 +18,10 @@ export const serverRaceState = writable({
   raceId: null,
   monsters: [],
   nextRaceTime: null,
-  state: 'waiting',  // 'waiting' | 'racing' | 'finished'
+  state: 'waiting',  // 'waiting' | 'closed' | 'racing' | 'finished'
   odds: {},
   betTotals: {},  // Total candies bet on each monster
   timeRemaining: 0,
-  bettingClosed: false,
   winner: null,
   rankings: [],
   raceDuration: null,
@@ -42,7 +41,6 @@ export function updateServerRaceState(raceData) {
     odds: raceData.odds,
     betTotals: raceData.betTotals || {},
     timeRemaining: raceData.timeRemaining,
-    bettingClosed: raceData.bettingClosed,
     winner: raceData.winner || null,
     rankings: raceData.rankings || [],
     raceDuration: raceData.raceDuration || null,
@@ -65,7 +63,7 @@ export async function placeBet(monsterId, amount) {
     throw new Error('Invalid bet amount');
   }
 
-  if (raceState.state !== 'waiting' || raceState.bettingClosed) {
+  if (raceState.state !== 'waiting') {
     throw new Error('Betting is closed');
   }
 

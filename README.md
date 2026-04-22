@@ -24,7 +24,7 @@ The project is two separate Node.js applications — a Svelte 5 SPA (client) and
 | **@fastify/cors** | ^9.0.0 | Cross-Origin Resource Sharing — allows the Vite dev server (`localhost:5173`) to call the API (`localhost:3000`) |
 | **@fastify/rate-limit** | ^9.1.0 | Global and per-route request rate limiting to prevent abuse |
 | **nanoid** | ^5.0.0 | Generates unique IDs for races and sessions |
-| **seedrandom** | ^3.0.5 | Seeded pseudo-random number generator — makes monster generation and race outcomes deterministic and reproducible from a seed string |
+| **seedrandom** | ^3.0.5 | Seeded pseudo-random number generator — makes Horror generation and race outcomes deterministic and reproducible from a seed string |
 | **pino** | ^8.18.0 | Structured JSON logger; used via a shared instance in `src/utils/logger.js`; service files create child loggers with a `module` label |
 | **pino-pretty** | ^10.3.0 | Development-only log formatter — converts Pino's JSON output to human-readable, colour-coded lines; disabled in production |
 
@@ -62,7 +62,7 @@ SESSION_TTL_MS=86400000
 LOG_LEVEL=info
 ```
 
-## Running the App
+## Running
 
 Both servers must be running simultaneously.
 
@@ -76,6 +76,8 @@ npm run dev
 
 - Client: http://localhost:5173
 - API: http://localhost:3000
+
+Use `dev.bat` to start both with one command on Windows.
 
 ## Build
 
@@ -104,13 +106,13 @@ The client is configured for Netlify via `netlify.toml` (build command, publish 
 2. In Netlify, create a new site from the repo — build settings are picked up automatically from `netlify.toml`.
 3. In **Site settings → Environment variables**, add:
    ```
-   VITE_API_URL=https://your-api-server.example.com/api
+   VITE_API_URL=https://UHRB-production.up.railway/api
    ```
 4. Deploy. Netlify runs `npm run build` and serves `/dist`.
 
 ### Backend — external host required
 
-Netlify Functions do not support WebSockets, so the Fastify server must be hosted separately. Good options: [Railway](https://railway.app), [Render](https://render.com), [Fly.io](https://fly.io).
+Backend is a Fastify API server using [Railway](https://railway.app).
 
 Regardless of host, set these environment variables on the server:
 
@@ -118,34 +120,38 @@ Regardless of host, set these environment variables on the server:
 PORT=3000
 HOST=0.0.0.0
 NODE_ENV=production
-CORS_ORIGIN=https://your-netlify-site.netlify.app
+CORS_ORIGIN=https://UHRB.netlify.app
 SESSION_TTL_MS=86400000
 LOG_LEVEL=info
 ```
 
-Set `CORS_ORIGIN` to your Netlify site URL so the browser can reach the API. Then update `VITE_API_URL` in Netlify to point at the deployed server before triggering a redeploy.
+---
+# Core Loop
 
-## Core Loop
-
-- Players get a starting balance of 100 candies.
-- They can bet on one monster (out of 4–6) to win the upcoming race.
+- Players get a starting balance of 100 **candies**.
+- They can bet on one Horror (out of 4–6) to win the upcoming race.
 - Races occur every 30–300 seconds.
-- Players can inspect each monster's bio before betting; the limited time window makes scouting meaningful.
-- Some monsters are less likely to win but pay out more; others are more consistent but pay less.
+- Players can inspect each horror's bio before betting; the limited time window makes scouting meaningful.
+- Some Horrors are less likely to win but pay out more; others are more consistent but pay less.
 
-## HORRORS
+## HORRORS {#horrors}
 
-Horrors are procedurally generated with a bio and traits. They may persist across races occasionally, but are generally generated fresh each race.
+Horrors are procedurally generated with a bio and traits.
+They may persist across races occasionally, but are generally generated fresh each race.
+The race *champion* always persists to the next race.
 
-Each bio and appearance entry is assigned a letter (A, C, G, T). Name and location are cosmetic only — no letter assignment. The total letter combination across all selected entries determines the monster's stats via the Trait Table below.
+Each bio and appearance entry is assigned a letter (A, C, G, T).
+Name and location do not - they are cosmetic only.
+The total letter combination across all selected entries determines the Horror's stats via the <a href="#traits">Trait Table</a>
 
 ### Bio
 
-- Unique name from two randomized name parts (sometimes one)
+- Unique name from two randomized name parts (Prefix + Suffix, Suffix can be empty)
 - Location found (e.g. "The Depths of the Abyss", "The Forgotten City", "Cleveland")
 - Brief description (1–2 sentences)
 - Blurb (e.g. "They have been disqualified from races in other dimensions")
 - Racing style (e.g. "Crawls" or "Slithers")
+- Name Suffix (e.g. "the Unknowable", "the Swift", "King of the Underdark")
 
 ### Appearance
 
@@ -154,10 +160,14 @@ Each bio and appearance entry is assigned a letter (A, C, G, T). Name and locati
 - Height (0–300 meters)
 - Weight (0–1000 tons)
 - Temperament (e.g. "Aggressive", "Calm", "Chaos-Incarnate")
+- Description (e.g "An entity that exists between dimensions")
+- Blurb (e.g. "Their themesong is oddly catchy")
+- Racing Style (e.g. "Glides" or "Shambles forward")
 
-### Traits
+### Traits {#traits}
 
 Stat numbers are never displayed to players — only inferred through prose, visual effects, and cryptic scholar hints.
+The highest value a single trait can be is 7.
 
 | Trait | Letter | Effect |
 |---|---|---|
@@ -165,13 +175,22 @@ Stat numbers are never displayed to players — only inferred through prose, vis
 | **Endurance** | C | Controls consistency across the race |
 | **Madness** | G | Controls unpredictability |
 | **Strength** | T | Controls burst amplitude |
-| **Luck** | — | Higher when the monster has more letter variety |
+| **Luck** | — | Higher when the horror has more letter variety |
 | **Value** | — | Hidden; skews payout relative to true odds (50 = fair, 100 = 3× overpay, 0 = 0.33× underpay) |
+
+### Race Calculation
+Deterministic and based on the seed string derived from the horror's traits.
+Race winner is the one with the highest **performanceScore**.
+```
+performanceScore = statScore + chaosScore
+statScore = (speed * 2.5) + (endurance * 1.5) + (strength * 1.0) + (luck * 1.5)
+chaosScore = random number between (100 - madness * 5) and (100 + madness * 5)
+```
 
 ## Pages
 
-- **Home** — race timer, monster roster, and betting panel.
-- **Bio** — full monster dossier with prose stats and betting slip.
+- **Home** — race timer, horror roster, and betting panel.
+- **Bio** — full horror dossier with prose stats and betting slip.
 - **Race** — live race animation with progress bars.
 - **Results** — outcome, race summary, and payout.
 - **History** — past bets log with aggregate stats (most earned, most lost, etc.).
@@ -183,6 +202,6 @@ Dark eldritch aesthetic — Warhammer 40K-style gothic fonts layered over an anc
 ## Stretch Goals
 
 - **Leaderboard** — top 10 players by candy count.
-- **Monster visuals** — procedurally styled illustrations based on traits.
+- **Horror visuals** — procedurally styled illustrations based on traits.
 - **Friend system** — add friends and bet on the same races together.
-- **More traits** — expand the trait system for greater monster variety.
+- **More traits** — expand the trait system for greater horror variety.

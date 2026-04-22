@@ -1,23 +1,34 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
   import { candies, currentBet, serverRaceState } from '../stores/game.js';
   import { placeBet, clearBet } from '../stores/game.js';
+
+  const dispatch = createEventDispatcher();
 
   export let selectedMonster = null;
   export let monsters = [];
 
   let betAmount = 10;
+  let betError = null;
 
   $: maxBet = $candies;
   $: canPlaceBet = selectedMonster && betAmount >= 1 && betAmount <= maxBet;
   $: hasActiveBet = $currentBet !== null;
+  $: if (selectedMonster) betError = null;
 
   $: odds = $serverRaceState.odds ?? {};
   $: selectedOdds = selectedMonster ? (odds[selectedMonster.id] ?? 0) : 0;
   $: potentialPayout = selectedMonster ? Math.floor(betAmount * selectedOdds) : 0;
 
-  function handlePlaceBet() {
+  async function handlePlaceBet() {
     if (canPlaceBet && selectedMonster) {
-      placeBet(selectedMonster.id, betAmount);
+      betError = null;
+      try {
+        await placeBet(selectedMonster.id, Math.floor(Number(betAmount)));
+        dispatch('placed');
+      } catch {
+        betError = 'Bet failed — please try again.';
+      }
     }
   }
 
@@ -112,6 +123,10 @@
           All In
         </button>
       </div>
+
+      {#if betError}
+        <p class="bet-error">{betError}</p>
+      {/if}
 
       <button
         class="button button-primary place-bet"
@@ -282,6 +297,14 @@
   .quick-bet {
     padding: 0.5rem;
     font-size: 0.75rem;
+  }
+
+  .bet-error {
+    color: var(--eldritch-red);
+    font-size: 0.8rem;
+    font-style: italic;
+    text-align: center;
+    margin: 0;
   }
 
   .place-bet {

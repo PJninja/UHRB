@@ -2,6 +2,7 @@
   import { push } from 'svelte-spa-router';
   import { monsters } from '../lib/stores/monsters.js';
   import { monsterHistory } from '../lib/stores/history.js';
+  import { getMonsterBio } from '../lib/services/api.js';
   import BettingContext from '../lib/components/BettingContext.svelte';
   import RichText from '../lib/components/RichText.svelte';
 
@@ -9,6 +10,18 @@
 
   $: monster = $monsters.find(m => m.id === params.id);
   $: record = monster ? $monsterHistory[monster.id] : null;
+
+  let bioData = null;
+  let bioLoading = false;
+
+  $: if (params.id) {
+    bioData = null;
+    bioLoading = true;
+    getMonsterBio(params.id)
+      .then(data => { bioData = data; })
+      .catch(() => { bioData = null; })
+      .finally(() => { bioLoading = false; });
+  }
 
   // Void-tagged scholar hints — shown when a stat is notably high (>= 7).
   // The void tag renders near-invisible but reveals on hover, rewarding careful readers.
@@ -52,6 +65,9 @@
   {#if monster}
     <!-- Hero -->
     <div class="bio-hero card">
+      {#if monster.isLegendary}
+        <div class="legendary-badge">⚝ Legendary Horror</div>
+      {/if}
       {#if monster.isReturningChampion}
         <div class="champion-badge">ᛟ Returning Champion</div>
       {/if}
@@ -70,13 +86,21 @@
 
         <!-- Description -->
         <section class="bio-section bio-section-prose">
-          <RichText text={monster.description} tag="p" />
+          {#if bioLoading}
+            <p class="bio-loading">Consulting the archives…</p>
+          {:else if bioData}
+            <RichText text={bioData.description} tag="p" />
+          {/if}
         </section>
 
         <!-- On the Record -->
         <section class="bio-section bio-section-prose">
           <h3 class="section-heading">On the Record</h3>
-          <RichText text={monster.blurb} tag="p" />
+          {#if bioLoading}
+            <p class="bio-loading">Consulting the archives…</p>
+          {:else if bioData}
+            <RichText text={bioData.blurb} tag="p" />
+          {/if}
         </section>
 
         <!-- Physical Characteristics -->
@@ -89,15 +113,21 @@
             </div>
             <div class="info-item">
               <span class="label">Distinctive Features</span>
-              <span class="value"><RichText text={monster.features} /></span>
+              <span class="value">
+                {#if bioData}
+                  <RichText text={bioData.features} />
+                {:else}
+                  <span class="bio-loading">—</span>
+                {/if}
+              </span>
             </div>
             <div class="info-item">
               <span class="label">Height</span>
-              <span class="value">{monster.height} meters</span>
+              <span class="value">{bioData ? `${bioData.height} meters` : '—'}</span>
             </div>
             <div class="info-item">
               <span class="label">Weight</span>
-              <span class="value">{monster.weight} tons</span>
+              <span class="value">{bioData ? `${bioData.weight} tons` : '—'}</span>
             </div>
           </div>
         </section>
@@ -219,6 +249,20 @@
       rgba(107, 90, 142, 0.08) 100%
     );
     border-color: var(--border-glow);
+  }
+
+  .legendary-badge {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    color: var(--eldritch-purple);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--eldritch-purple);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--eldritch-purple) 60%, transparent),
+                inset 0 0 8px color-mix(in srgb, var(--eldritch-purple) 15%, transparent);
+    display: inline-block;
   }
 
   .champion-badge {
@@ -453,6 +497,14 @@
     opacity: 0.6;
     margin: 0;
     text-align: center;
+  }
+
+  /* ── Bio loading ── */
+  .bio-loading {
+    color: var(--text-secondary);
+    font-style: italic;
+    opacity: 0.5;
+    margin: 0;
   }
 
   /* ── Not found ── */

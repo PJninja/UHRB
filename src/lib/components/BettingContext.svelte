@@ -6,7 +6,7 @@
   export let monster;
 
   $: odds = $serverRaceState.odds?.[monster.id];
-  $: bettingOpen = $serverRaceState.state === 'waiting' && !$serverRaceState.bettingClosed;
+  $: bettingOpen = $serverRaceState.state === 'waiting';
   $: hasBetOnThis = $currentBet?.monsterId === monster.id;
   $: raceFinished = $serverRaceState.state === 'finished';
 

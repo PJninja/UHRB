@@ -3,6 +3,9 @@ import { namePrefixes, nameSuffixes, locations } from '../data/nameData.js';
 import { descriptions, blurbs, racingStyles } from '../data/bioData.js';
 import { bodyTypes, distinctiveFeatures, temperaments } from '../data/appearanceData.js';
 import { randomInt, selectRandom, shuffle, generateUUID, rollChance } from '../utils/random.js';
+import { legendaryMonsters } from '../data/legendaryMonsters.js';
+
+const LEGENDARY_CHANCE = 5;
 
 /**
  * Calculate luck stat from letter variety.
@@ -43,11 +46,11 @@ export function generateMonster() {
     const prefix = selectRandom(namePrefixes);
     const suffix  = selectRandom(nameSuffixes);
     name = `${prefix.text} ${suffix.text}`;
-    nameLetters = [prefix.letter, suffix.letter];
+    nameLetters = [suffix.letter];
   } else {
     const single = selectRandom([...namePrefixes, ...nameSuffixes]);
     name = single.text;
-    nameLetters = [single.letter];
+    nameLetters = single.letter ? [single.letter] : [];
   }
 
   // All letters from selected entries — this is the full stat genome
@@ -124,6 +127,13 @@ export function generateRaceMonsters(count = null, previousMonsters = null, prev
       const shuffled = shuffle(eligible);
       monsters.push(...shuffled.slice(0, reuseCount));
     }
+  }
+
+  // Inject a legendary if: roll hits, one isn't already in the pool (e.g. as returning
+  // champion), and at least one slot remains for it.
+  const hasLegendary = monsters.some(m => m.isLegendary);
+  if (!hasLegendary && rollChance(LEGENDARY_CHANCE) && monsterCount - monsters.length > 0) {
+    monsters.push(selectRandom(legendaryMonsters));
   }
 
   // Fill remaining slots with fresh horrors
