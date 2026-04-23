@@ -9,7 +9,7 @@ UHRB is a browser-based game where you bet candies on the outcome of a race betw
 
 The project is two separate Node.js applications — a Svelte 5 SPA (client) and a Fastify API server — that communicate via WebSocket and REST.
 
-### Client (`/` — root)
+### Client (`/client`)
 
 | Dependency | Version | How it's used |
 |---|---|---|
@@ -41,8 +41,8 @@ The project is two separate Node.js applications — a Svelte 5 SPA (client) and
 ### Install dependencies
 
 ```bash
-# Client (root)
-npm install
+# Client
+cd client && npm install
 
 # Server
 cd server && npm install
@@ -50,7 +50,7 @@ cd server && npm install
 
 ### Environment variables
 
-**Client** — create `.env` in the root directory:
+**Client** — create `.env` in `/client`:
 ```
 VITE_API_URL=http://localhost:3000/api
 ```
@@ -73,7 +73,7 @@ Both servers must be running simultaneously.
 # Terminal 1 — API server (from /server)
 npm run dev
 
-# Terminal 2 — Vite dev server (from root)
+# Terminal 2 — Vite dev server (from /client)
 npm run dev
 ```
 
@@ -89,7 +89,7 @@ Both packages use [Vitest](https://vitest.dev/). Run `test.bat` from the project
 ## Build
 
 ```bash
-# Build the client for production (from root)
+# Build the client for production (from /client)
 npm run build
 
 # Preview the production build locally
@@ -99,7 +99,7 @@ npm run preview
 npm start
 ```
 
-The production build outputs to `/dist`.
+The production build outputs to `client/dist`.
 Serve it with any static file host and point `VITE_API_URL` at your deployed API server.
 
 ## Deployment
@@ -147,8 +147,8 @@ The total letter combination across all selected entries determines the Horror's
 
 ### Traits {#traits}
 
-Stat numbers are never displayed to players — only inferred through prose, visual effects, and cryptic scholar hints.
-The highest value a single trait can be is 7.
+Stat numbers are never displayed to players — only inferred through prose, visual effects, and the **Field Classification** card on the Bio page.
+The highest value a single trait can be is 7 for generated horrors (all 7 genome letters match); legendary horrors have hand-authored stats that can reach 10.
 
 | Trait | Letter | Effect |
 |---|---|---|
@@ -157,7 +157,7 @@ The highest value a single trait can be is 7.
 | **Madness** | G | Controls unpredictability |
 | **Strength** | T | Controls burst amplitude |
 | **Luck** | — | Higher when the horror has more letter variety |
-| **Value** | — | Hidden; skews payout relative to true odds (50 = fair, 100 = 3× overpay, 0 = 0.33× underpay) |
+| **Value** | — | Hidden (1–100); contributes 30% to betting odds. Beloved tier (value ≤ 20) is hard-capped at 1.5× return. |
 
 ### Race Calculation
 Deterministic and based on the seed string derived from the horror's traits.
@@ -168,10 +168,18 @@ statScore = (speed * 2.5) + (endurance * 1.5) + (strength * 1.0) + (luck * 1.5)
 chaosScore = random number between (100 - madness * 5) and (100 + madness * 5)
 ```
 
+### Odds Calculation
+```
+statsOdds  = 1 / (monster statScore / total statScores across field)   [clamped 1.5–10]
+valueOdds  = 1.5 + (value / 100) * 8.5                                 [clamped 1.5–10]
+finalOdds  = (0.7 × statsOdds) + (0.3 × valueOdds)
+```
+Beloved horrors (value ≤ 20) are hard-capped at **1.5×**. Legendary horrors are capped at **2.0×**; all other horrors racing against a legendary get a **2×** boost to their odds.
+
 ## Pages
 
 - **Home** — race timer, horror roster, and betting panel.
-- **Bio** — full horror dossier with prose stats and betting slip.
+- **Bio** — full horror dossier with prose stats, betting slip, Audience Favor, and a **Field Classification** card showing two alchemical symbols (power tier + dominant stat) and a Class Level letter.
 - **Race** — live race animation with progress bars.
 - **Results** — outcome, race summary, and payout.
 - **History** — past bets log with aggregate stats (most earned, most lost, etc.).

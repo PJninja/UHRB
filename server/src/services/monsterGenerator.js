@@ -6,6 +6,13 @@ import { randomInt, selectRandom, shuffle, generateUUID, rollChance } from '../u
 import { legendaryMonsters } from '../data/legendaryMonsters.js';
 import { config } from '../config.js';
 
+const STYLES = ['mundane', 'cosmic', 'bureau'];
+
+function filterByStyle(pool, style) {
+  const filtered = pool.filter(entry => entry.style === style);
+  return filtered.length >= 6 ? filtered : pool;
+}
+
 /**
  * Calculate luck stat from letter variety.
  * More unique letters across all selections = higher luck.
@@ -31,23 +38,27 @@ function countLetter(letters, target) {
  * Stats are derived entirely from the letters of the selected entries.
  */
 export function generateMonster() {
-  const desc        = selectRandom(descriptions);
-  const blurb       = selectRandom(blurbs);
-  const racingStyle = selectRandom(racingStyles);
-  const bodyType    = selectRandom(bodyTypes);
-  const features    = selectRandom(distinctiveFeatures);
-  const temperament = selectRandom(temperaments);
+  const style = STYLES[randomInt(0, STYLES.length - 1)];
+
+  const desc        = selectRandom(filterByStyle(descriptions, style));
+  const blurb       = selectRandom(filterByStyle(blurbs, style));
+  const racingStyle = selectRandom(filterByStyle(racingStyles, style));
+  const bodyType    = selectRandom(filterByStyle(bodyTypes, style));
+  const features    = selectRandom(filterByStyle(distinctiveFeatures, style));
+  const temperament = selectRandom(filterByStyle(temperaments, style));
 
   // Name: 70% compound (prefix + suffix), 30% single word
+  const filteredPrefixes = filterByStyle(namePrefixes, style);
+  const filteredSuffixes = filterByStyle(nameSuffixes, style);
   let name;
   let nameLetters;
   if (rollChance(70)) {
-    const prefix = selectRandom(namePrefixes);
-    const suffix  = selectRandom(nameSuffixes);
+    const prefix = selectRandom(filteredPrefixes);
+    const suffix  = selectRandom(filteredSuffixes);
     name = `${prefix.text} ${suffix.text}`;
     nameLetters = [suffix.letter];
   } else {
-    const single = selectRandom([...namePrefixes, ...nameSuffixes]);
+    const single = selectRandom([...filteredPrefixes, ...filteredSuffixes]);
     name = single.text;
     nameLetters = single.letter ? [single.letter] : [];
   }
@@ -75,15 +86,17 @@ export function generateMonster() {
   return {
     id:          generateUUID(),
     name,
-    location:    selectRandom(locations),  // plain string, cosmetic only
+    location:    selectRandom(filterByStyle(locations, style)).text,
     description: desc.text,
     blurb:       blurb.text,
     racingStyle: racingStyle.text,
-    bodyType:    bodyType.text,
+    bodyType:       bodyType.text,
+    bodyTypeLetter: bodyType.letter,
     features:    features.text,
     height:      randomInt(0, 300),
     weight:      randomInt(0, 1000),
     temperament: temperament.text,
+    style,
     traits,
   };
 }

@@ -120,7 +120,7 @@ export function calculateOdds(monsters) {
 
   // Odds range [1.5, 10]. Value maps linearly across the full range:
   // value=1 (Beloved) → 1.5× (low payout), value=100 (Despised) → 10× (high payout).
-  // Final odds = 30% stats component + 70% value component.
+  // Final odds = 70% stats component + 30% value component.
   // Legendary adjustment: legendary monsters are crowd-recognized and capped at low payout;
   // rivals racing against one get a boost (crowd underestimates them by comparison).
   const hasLegendary = monsters.some(m => m.isLegendary);
@@ -135,8 +135,12 @@ export function calculateOdds(monsters) {
     const statsOdds = Math.min(10, Math.max(1.5, 1 / winProbability));
     const valueOdds  = 1.5 + (value / 100) * 8.5;
 
-    const blended = 0.3 * statsOdds + 0.7 * valueOdds;
+    const blended = 0.7 * statsOdds + 0.3 * valueOdds;
     let finalOdds = Math.min(10, Math.max(1.5, blended));
+
+    if (value <= 20) {
+      finalOdds = Math.min(finalOdds, 1.5);  // Beloved tier: cap return at 1.5×
+    }
 
     if (monster.isLegendary) {
       finalOdds = Math.min(finalOdds, LEGENDARY_MAX_ODDS);

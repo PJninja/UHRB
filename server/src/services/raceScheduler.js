@@ -213,7 +213,7 @@ export function finishRace() {
   log.info({ raceId: currentRace.id, winner: currentRace.winner.name }, 'race finished');
 
   currentRace.state = 'finished';
-  previousWinner = currentRace.winner;
+  previousWinner = currentRace.winner?.isLegendary ? null : currentRace.winner;
 
   broadcast('race:update', racePayload(currentRace));
 

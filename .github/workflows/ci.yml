@@ -20,6 +20,7 @@ jobs:
 
       - name: Install frontend deps
         run: npm ci
+        working-directory: client
 
       - name: Install server deps
         run: npm ci
@@ -27,6 +28,7 @@ jobs:
 
       - name: Frontend tests
         run: npm test
+        working-directory: client
 
       - name: Server tests
         run: npm test

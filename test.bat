@@ -12,8 +12,10 @@ echo.
 echo ========================================
 echo  FRONTEND TESTS
 echo ========================================
+cd ..\client
 call npm test
 set FRONTEND_EXIT=%ERRORLEVEL%
+cd ..
 
 echo.
 echo ========================================

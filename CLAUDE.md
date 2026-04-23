@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Frontend (root directory)
+### Frontend (`/client`)
 ```bash
+cd client
 npm run dev      # Start Vite dev server at http://localhost:5173
 npm run build    # Production build
 npm run preview  # Preview production build
@@ -33,9 +34,9 @@ test.bat --ci    # Run all tests without pausing (any arg skips pause)
 
 ## Architecture
 
-The app is two separate Node.js projects — a Svelte 5 SPA (root) and a Fastify REST API (`/server`). They communicate via WebSocket (real-time push) and REST calls.
+The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fastify REST API (`/server`). They communicate via WebSocket (real-time push) and REST calls.
 
-### Frontend (`/src`)
+### Frontend (`/client/src`)
 
 - **`main.js` → `App.svelte`** — entry point; handles session initialization (create/validate via API) before mounting the router; reactive `$raceState === 'racing'` forces navigation to `/race` regardless of current page
 - **`/routes`** — SPA pages via `svelte-spa-router`:
@@ -60,7 +61,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (root) and a Fastify
 - **`/lib/services/raceSocket.js`** — WebSocket client; receives `race:update` events; reconnects with exponential backoff + ±2s jitter to prevent thundering herd
 - **`/lib/services/api.js`** — REST client wrapping all server calls
 - **`/lib/utils/raceSimulation.js`** — **client-side visual simulation only** (not authoritative); accepts optional `serverRankings` to guarantee visual outcome matches server result; generates monotonic position curves via velocity integration (monsters never go backwards); stat traits shape the noise: speed→surge frequency, endurance→consistency, strength→burst amplitude
-- **`/lib/utils/richText.js`** — parser for inline rich text; supports tags: `glow`, `gold`, `blood`, `void`, `madness`, `ancient`, `eldritch`
+- **`/lib/utils/richText.js`** — parser for inline rich text; supports tags: `glow`, `gold`, `blood`, `void`, `madness`, `ancient`, `eldritch`, `cosmic`, `infernal`, `spectral`, `hex`
 
 ### Backend (`/server/src`)
 
@@ -68,9 +69,9 @@ The app is two separate Node.js projects — a Svelte 5 SPA (root) and a Fastify
 - **`config.js`** — centralised config (PORT, HOST, CORS_ORIGIN, SESSION_TTL_MS, LOG_LEVEL)
 - **`/routes/rest.js`** — REST handlers: `GET /api/session`, `POST /api/session` (20/min), `GET /api/session/:id/validate`, `GET /api/race/current`, `POST /api/race/:raceId/bet` (60/min), `POST /api/race/:raceId/payout/validate` (60/min); write endpoints have per-route rate limits tighter than the global
 - **`/routes/ws.js`** — WebSocket handler at `/ws`; registers/removes clients via broadcaster; sends current race state on connect
-- **`/services/raceScheduler.js`** — owns the race lifecycle state machine (`waiting` → `racing` → `finished`); schedules next race; exports `sanitizeMonster` (strips `value`, adds `isReturningChampion`) and `racePayload` (includes `winner` + `rankings` once racing, so client visuals match server outcome); bet-total broadcasts are debounced 300ms; `BETTING_CLOSE_BEFORE_MS = 5000`
-- **`/services/raceSimulator.js`** — **server-authoritative** outcome; seeded RNG for deterministic results; race duration 20–30s
-- **`/services/monsterGenerator.js`** — seeded monster generation; text entries are `{ text, letter }` pairs; stats derived by counting letters across all selected texts
+- **`/services/raceScheduler.js`** — owns the race lifecycle state machine (`waiting` → `racing` → `finished`); schedules next race; exports `sanitizeMonster` (strips `value`, `description`, `blurb`, `height`, `weight`, `features`; adds `isReturningChampion`, `audienceFavor`, `bodyTypeLetter`) and `racePayload` (includes `winner` + `rankings` once racing, so client visuals match server outcome); bet-total broadcasts are debounced 300ms; `BETTING_CLOSE_BEFORE_MS = 5000`
+- **`/services/raceSimulator.js`** — **server-authoritative** outcome; seeded RNG for deterministic results; race duration 20–30s; odds = 70% stats + 30% value; Beloved tier (value ≤ 20) hard-capped at 1.5×; legendaries capped at 2.0×
+- **`/services/monsterGenerator.js`** — seeded monster generation; text entries are `{ text, letter }` pairs; stats derived by counting letters across all selected texts; exposes `bodyTypeLetter` on the monster object (passed through by `sanitizeMonster`)
 - **`/services/broadcaster.js`** — WebSocket broadcaster; Set of sockets; stale sockets (throw on send) auto-removed; `WS_OPEN = 1` constant
 - **`/services/payoutValidator.js`** — anti-cheat: recomputes payout as `bet × odds`; value is already baked into odds (no separate multiplier)
 - **`/state/sessionManager.js`** — in-memory session store with 24-hour TTL; expired sessions purged on hourly background interval (not on-read)
@@ -84,7 +85,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (root) and a Fastify
 
 - **Monster generation is server-only.** The server sends sanitized monster objects over the API/WebSocket; the client only renders them.
 - **`value` is a hidden stat** (stripped by `sanitizeMonster` before any API response) applied as a payout multiplier on wins. Players never see it.
-- **No stat numbers are ever shown.** The Bio page uses prose, RichText effects, and "Patterns in the Void" void-tagged scholar hints to let players infer stat strength without displaying digits.
+- **No stat numbers are ever shown.** The Bio page uses prose, RichText effects, and a **Field Classification** card (two alchemical symbols: power tier + dominant stat; plus a Class Level letter from `bodyTypeLetter`) to let players infer stat strength without displaying digits. Players decode the symbol system empirically by cross-referencing the bio with race outcomes over time.
 - **Text entries encode stats:** every catalog entry is `{ text, letter }` where letter ∈ {A=Speed, C=Endurance, G=Madness, T=Strength}. RichText tags in entry text visually reinforce the stat category: A→`<glow>`, C→`<ancient>`, G→`<madness>`, T→`<blood>`.
 - **Two-simulation architecture:** the server computes the authoritative winner (seeded RNG); the client runs a visual-only simulation using `serverRankings` from the WebSocket payload to guarantee the visual outcome matches the server result.
 - **All bet validation happens server-side.** The payout validator endpoint exists specifically to prevent client-side cheating.
@@ -92,7 +93,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (root) and a Fastify
 
 ## Environment Variables
 
-**Frontend** (`.env` in root):
+**Frontend** (`client/.env`):
 ```
 VITE_API_URL=http://localhost:3000/api
 ```
@@ -159,7 +160,7 @@ Both packages use **Vitest 2.x**. 161 tests total — no running server, no port
 | Suite | Config | Test files |
 |---|---|---|
 | Server (unit + integration) | `server/vitest.config.js` | `server/test/**/*.test.js` |
-| Frontend | `vite.config.js` (`test` block) | `src/test/**/*.test.js` |
+| Frontend | `client/vite.config.js` (`test` block) | `client/src/test/**/*.test.js` |
 
 ### Running tests
 
@@ -167,9 +168,9 @@ Both packages use **Vitest 2.x**. 161 tests total — no running server, no port
 test.bat            # Run all suites, pause to read results (Windows)
 test.bat --ci       # Run all suites without pausing (any arg skips pause)
 
-cd server && npm test           # Server tests only (117 tests)
-npm test                        # Frontend tests only (44 tests)
-cd server && npm run test:watch # Watch mode for active development
+cd server && npm test            # Server tests only (117 tests)
+cd client && npm test           # Frontend tests only (44 tests)
+cd client && npm run test:watch # Watch mode for active development
 ```
 
 ### What is covered
@@ -196,8 +197,8 @@ Integration tests use `buildApp({ logger: false, ws: false })` from `server/src/
 
 | File | Covers |
 |---|---|
-| `src/test/richText.test.js` | All 11 tags, plain text, surrounding text, adjacency, unknown/unclosed tags, case-insensitivity |
-| `src/test/history.test.js` | `monsterHistory` appearance/win counts, `historyStats` aggregation, win rate precision, 50-race limit |
+| `client/src/test/richText.test.js` | All 11 tags, plain text, surrounding text, adjacency, unknown/unclosed tags, case-insensitivity |
+| `client/src/test/history.test.js` | `monsterHistory` appearance/win counts, `historyStats` aggregation, win rate precision, 50-race limit |
 
 ### Test Mode (accelerated race timing)
 
@@ -264,7 +265,7 @@ afterEach(() => vi.useRealTimers());
 
 **Server integration test** — add to `server/test/integration/rest.test.js` or create a new file in that directory. Use `buildApp({ logger: false, ws: false })` in `beforeAll`, call `app.close()` in `afterAll`. Mock `raceScheduler` for race state; use the real `sessionManager` (create sessions via `POST /api/session`).
 
-**Frontend test** — create `src/test/<name>.test.js`. The jsdom environment provides localStorage. Import Svelte stores directly and use `get()` from `svelte/store` to read their current value; call `store.set([])` in `beforeEach` to reset state between tests.
+**Frontend test** — create `client/src/test/<name>.test.js`. The jsdom environment provides localStorage. Import Svelte stores directly and use `get()` from `svelte/store` to read their current value; call `store.set([])` in `beforeEach` to reset state between tests.
 
 **General rules:**
 - No test should start a server, open a port, or make a network call

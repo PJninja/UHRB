@@ -23,17 +23,28 @@
       .finally(() => { bioLoading = false; });
   }
 
-  // Void-tagged scholar hints — shown when a stat is notably high (>= 7).
-  // The void tag renders near-invisible but reveals on hover, rewarding careful readers.
-  const VOID_HINTS = {
-    speed:     'Racing Commission archivists note: <void>entities that haunt dimensional edges tend to surge unpredictably in the opening moments</void>.',
-    endurance: 'Filed under ancient observations: <void>those who predate time rarely tire before the finish line</void>.',
-    strength:  'Field report, Classification T: <void>horrors that feed on fear maintain velocity through sheer force of will</void>.',
-    madness:   'Warning label, unstable entries: <void>chaotic geometry introduces wild swings — glory or catastrophe, never mediocrity</void>.',
-    luck:      '<void>Fortune favours the well-positioned when the void makes its final accounting.</void>',
+  // SCP-style Field Classification — two alchemical symbols encoding power tier and dominant stat.
+  // Players discover the encoding empirically by cross-referencing bio entries with race outcomes.
+  // Power tier: classical four elements → quintessence → vitriol (low → high).
+  // Stat: aqua regia, aqua vitae, vinegar, sal ammoniac, oil of vitriol.
+  const POWER_RUNES = [
+    { min: 0,    rune: '🜃' },  // Earth
+    { min: 16,   rune: '🜄' },  // Water
+    { min: 21,   rune: '🜁' },  // Air
+    { min: 25.5, rune: '🜂' },  // Fire
+    { min: 31,   rune: '🜀' },  // Quintessence
+    { min: 38,   rune: '🜋' },  // Vitriol
+  ];
+
+  const STAT_RUNES = {
+    speed:     '🜇',  // Aqua Regia 2
+    endurance: '🜉',  // Aqua Vitae 2
+    strength:  '🜍',  // Red Vitriol
+    madness:   '🜊',  // Vinegar
+    luck:      '🜑',  // Sal Ammoniac
   };
 
-  const HIGH_STAT_THRESHOLD = 7;
+  const STAT_PRIORITY = ['speed', 'endurance', 'strength', 'madness', 'luck'];
 
   const FAVOR_TIERS = {
     1: { label: 'Despised',   desc: 'The crowd has little faith. Those who bet here may be rewarded.' },
@@ -48,10 +59,26 @@
     : monster.audienceFavor === 3 ? '#6b5a44'
     : 'var(--candy-color)';
 
-  $: voidHints = monster ? Object.entries(VOID_HINTS)
-    .filter(([stat]) => (monster.traits[stat] ?? 0) >= HIGH_STAT_THRESHOLD)
-    .map(([, hint]) => hint)
-    : [];
+  $: commissionField = (() => {
+    if (!monster?.traits) return null;
+    const { speed, endurance, strength, luck } = monster.traits;
+    const score = (speed * 2.5) + (endurance * 1.5) + (strength * 1.0) + (luck * 1.5);
+
+    let powerRune = POWER_RUNES[0].rune;
+    for (let i = POWER_RUNES.length - 1; i >= 0; i--) {
+      if (score >= POWER_RUNES[i].min) { powerRune = POWER_RUNES[i].rune; break; }
+    }
+
+    const dominant = STAT_PRIORITY.reduce((best, stat) =>
+      (monster.traits[stat] ?? 0) > (monster.traits[best] ?? 0) ? stat : best
+    );
+
+    return {
+      powerRune,
+      statRune: STAT_RUNES[dominant],
+      classLevel: monster.bodyTypeLetter ?? '—',
+    };
+  })();
 </script>
 
 <div class="bio-page">
@@ -164,21 +191,9 @@
           </section>
         {/if}
 
-        <!-- Patterns in the Void -->
-        <section class="bio-section void-section">
-          <h3 class="section-heading void-heading">— Patterns in the Void —</h3>
-          {#if voidHints.length > 0}
-            {#each voidHints as hint}
-              <p class="void-hint"><em><RichText text={hint} /></em></p>
-            {/each}
-          {:else}
-            <p class="void-empty"><em>The archivists' records on this entity remain… incomplete.</em></p>
-          {/if}
-        </section>
-
       </div>
 
-      <!-- Aside: betting context + audience favor -->
+      <!-- Aside: betting context, audience favor, field classification -->
       <aside class="bio-aside">
         <BettingContext {monster} />
 
@@ -197,6 +212,17 @@
             {#if monster.isReturningChampion}
               <p class="favor-champion-note">Champion status has elevated their standing with the crowd.</p>
             {/if}
+          </div>
+        {/if}
+
+        {#if commissionField}
+          <div class="field-classification card">
+            <h3 class="aside-heading">Field Classification</h3>
+            <div class="field-runes">
+              <span class="field-rune">{commissionField.powerRune}</span>
+              <span class="field-rune">{commissionField.statRune}</span>
+            </div>
+            <div class="field-class-level">Class Level &nbsp;{commissionField.classLevel}</div>
           </div>
         {/if}
       </aside>
@@ -465,38 +491,34 @@
     opacity: 0.8;
   }
 
-  /* ── Patterns in the Void ── */
-  .void-section {
-    border-bottom: none;
+  /* ── Field Classification ── */
+  .field-classification {
+    text-align: center;
+    padding: 1.25rem 1rem;
+    margin-top: 1rem;
   }
 
-  .void-heading {
-    text-align: center;
-    border: none;
-    padding-left: 0;
+  .field-runes {
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .field-rune {
+    font-family: 'Noto Sans Symbols 2', serif;
+    font-size: 2.5rem;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .field-class-level {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
     color: var(--text-secondary);
     opacity: 0.7;
-  }
-
-  .void-hint {
-    font-size: 0.9rem;
-    line-height: 1.7;
-    color: var(--text-secondary);
-    margin: 0 0 0.75rem 0;
-    padding-left: 1rem;
-    border-left: 2px solid rgba(107, 90, 142, 0.2);
-  }
-
-  .void-hint:last-child {
-    margin-bottom: 0;
-  }
-
-  .void-empty {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    opacity: 0.6;
-    margin: 0;
-    text-align: center;
   }
 
   /* ── Bio loading ── */

@@ -51,7 +51,7 @@
       <div class="quick-info">
         <div class="info-row">
           <span class="label">Racing Style:</span>
-          <span class="value">{monster.racingStyle}</span>
+          <span class="value"><RichText text={monster.racingStyle} /></span>
         </div>
         <div class="info-row">
           <span class="label">Body Type:</span>
@@ -125,7 +125,7 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Racing Style:</span>
-            <span class="value">{monster.racingStyle}</span>
+            <span class="value"><RichText text={monster.racingStyle} /></span>
           </div>
           <div class="info-item">
             <span class="label">Temperament:</span>

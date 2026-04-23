@@ -11,11 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+client/node_modules/
+client/dist/
 
 # Environment variables
 .env
 .env.*
 !.env.example
+client/.env
 
 # Editor directories and files
 .vscode/*

@@ -426,7 +426,6 @@
             {monster.name}
             {#if isPlayer}<span class="player-star">★</span>{/if}
           </div>
-          <div class="horror-style">{monster.racingStyle}</div>
           <div class="horror-bets">
             {#if ($serverRaceState.betTotals[id] ?? 0) > 0}
               {$serverRaceState.betTotals[id]} candies wagered
@@ -679,13 +678,6 @@
     color: var(--candy-color);
     font-size: 1rem;
     animation: pulse 1.2s ease-in-out infinite;
-  }
-
-  .horror-style {
-    font-size: 0.72rem;
-    color: var(--text-secondary);
-    font-style: italic;
-    letter-spacing: 0.5px;
   }
 
   .horror-bets {
