@@ -1,6 +1,7 @@
 // Race lifecycle scheduler - manages the automatic race timer and simulation
 import { nanoid } from 'nanoid';
 import { setSeed, resetSeed, randomInt } from '../utils/random.js';
+import { config } from '../config.js';
 import { generateRaceMonsters } from './monsterGenerator.js';
 import { simulateRace, calculateOdds } from './raceSimulator.js';
 import { broadcast } from './broadcaster.js';
@@ -111,8 +112,7 @@ export function scheduleNextRace() {
   // Reset seed after monster generation
   resetSeed();
 
-  // Random delay between 30-300 seconds
-  const delay = randomInt(30000, 300000);
+  const delay = randomInt(config.raceIntervalMin, config.raceIntervalMax);
   const nextRaceTime = Date.now() + delay;
 
   // Initialize bet totals for each monster
@@ -142,10 +142,9 @@ export function scheduleNextRace() {
   if (raceTimeout) clearTimeout(raceTimeout);
   if (timerInterval) clearInterval(timerInterval);
 
-  const BETTING_CLOSE_BEFORE_MS = 5000;
   setTimeout(() => {
     closeBetting();
-  }, Math.max(0, delay - BETTING_CLOSE_BEFORE_MS));
+  }, Math.max(0, delay - config.bettingCloseBeforeMs));
 
   // Auto-start race when timer expires
   raceTimeout = setTimeout(() => {
@@ -182,8 +181,7 @@ export function startRace() {
   const raceSeed = `${currentRace.id}-race`;
   setSeed(raceSeed);
 
-  // Random race duration (10-20 seconds)
-  const raceDuration = randomInt(20000, 30000);
+  const raceDuration = randomInt(config.raceDurationMin, config.raceDurationMax);
 
   // Run race simulation
   const raceResult = simulateRace(currentRace.monsters, raceDuration);
@@ -211,7 +209,7 @@ export function startRace() {
 /**
  * Finish the race and schedule next one
  */
-function finishRace() {
+export function finishRace() {
   log.info({ raceId: currentRace.id, winner: currentRace.winner.name }, 'race finished');
 
   currentRace.state = 'finished';
@@ -240,6 +238,16 @@ export function addBetToTotal(monsterId, amount) {
       broadcast('race:update', racePayload(currentRace));
     }, 300);
   }
+}
+
+/**
+ * Immediately advance the race to the next phase (test mode only).
+ * waiting/closed → racing → finished → waiting
+ */
+export function forceAdvance() {
+  if (currentRace.state === 'waiting' || currentRace.state === 'closed') startRace();
+  else if (currentRace.state === 'racing') finishRace();
+  else if (currentRace.state === 'finished') scheduleNextRace();
 }
 
 /**

@@ -2,6 +2,8 @@
 
 UHRB is a browser-based game where you bet candies on the outcome of a race between procedurally generated unspeakable monstrosities.
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/8a96ff5a-c8f8-4970-a616-f7a5d666d8ac/deploy-status)](https://app.netlify.com/projects/uhrb/deploys)
+
 ## Tech Stack
 
 The project is two separate Node.js applications — a Svelte 5 SPA (client) and a Fastify API server — that communicate via WebSocket and REST.
@@ -79,6 +81,10 @@ npm run dev
 
 Use `dev.bat` to start both with one command on Windows.
 
+## Testing
+
+Both packages use [Vitest](https://vitest.dev/). Run `test.bat` from the project root to execute all 138 tests across both suites and pause to read the results, or run `npm test` individually from the root (frontend) or `/server` (backend). No running server or network connection is required — all tests are in-process with dependencies mocked.
+
 ## Build
 
 ```bash
@@ -92,38 +98,12 @@ npm run preview
 npm start
 ```
 
-The production build outputs to `/dist`. Serve it with any static file host and point `VITE_API_URL` at your deployed API server.
+The production build outputs to `/dist`.
+Serve it with any static file host and point `VITE_API_URL` at your deployed API server.
 
 ## Deployment
-
 ### Frontend — Netlify
-
-The client is configured for Netlify via `netlify.toml` (build command, publish directory, SPA fallback redirect).
-
-**Steps:**
-
-1. Push the repo to GitHub.
-2. In Netlify, create a new site from the repo — build settings are picked up automatically from `netlify.toml`.
-3. In **Site settings → Environment variables**, add:
-   ```
-   VITE_API_URL=https://UHRB-production.up.railway/api
-   ```
-4. Deploy. Netlify runs `npm run build` and serves `/dist`.
-
-### Backend — external host required
-
-Backend is a Fastify API server using [Railway](https://railway.app).
-
-Regardless of host, set these environment variables on the server:
-
-```
-PORT=3000
-HOST=0.0.0.0
-NODE_ENV=production
-CORS_ORIGIN=https://UHRB.netlify.app
-SESSION_TTL_MS=86400000
-LOG_LEVEL=info
-```
+### Backend — Railway
 
 ---
 # Core Loop

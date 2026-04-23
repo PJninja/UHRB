@@ -13,12 +13,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Start Vite dev server at http://localhost:5173
 npm run build    # Production build
 npm run preview  # Preview production build
+npm test         # Run frontend unit tests (one-shot)
+npm run test:watch  # Run frontend tests in watch mode
 ```
 
 ### Backend (`/server`)
 ```bash
 npm run dev      # Start Fastify server with file watching at http://localhost:3000
 npm start        # Run server in production mode
+npm test         # Run server unit tests (one-shot)
+npm run test:watch  # Run server tests in watch mode
+```
+
+### Both suites
+```bash
+test.bat         # Run all tests and pause to read results (Windows)
+test.bat --ci    # Run all tests without pausing (any arg skips pause)
 ```
 
 ## Architecture
@@ -141,6 +151,125 @@ LOG_LEVEL=info    # production default — lifecycle events only
 LOG_LEVEL=debug   # local debugging — full event stream
 LOG_LEVEL=warn    # minimal — warnings and errors only
 ```
+
+## Tests
+
+Both packages use **Vitest 2.x**. 161 tests total — no running server, no ports, no network calls required.
+
+| Suite | Config | Test files |
+|---|---|---|
+| Server (unit + integration) | `server/vitest.config.js` | `server/test/**/*.test.js` |
+| Frontend | `vite.config.js` (`test` block) | `src/test/**/*.test.js` |
+
+### Running tests
+
+```bash
+test.bat            # Run all suites, pause to read results (Windows)
+test.bat --ci       # Run all suites without pausing (any arg skips pause)
+
+cd server && npm test           # Server tests only (117 tests)
+npm test                        # Frontend tests only (44 tests)
+cd server && npm run test:watch # Watch mode for active development
+```
+
+### What is covered
+
+**Server — unit tests** (pure functions, no HTTP):
+
+| File | Covers |
+|---|---|
+| `server/test/random.test.js` | Seeded RNG determinism, all 8 utility functions, boundary values |
+| `server/test/raceSimulator.test.js` | `calculateOdds` (legendary caps, rival boost, range), `simulateRace` (structure, determinism, stat dominance) |
+| `server/test/monsterGenerator.test.js` | `generateMonster`, `generateRaceMonsters` (champion return, value reduction, legendary injection, count limits), `calculateStatTotal`, `sanitizeMonster` |
+| `server/test/payoutValidator.test.js` | All race states, win/loss payouts, floor truncation, mismatch handling, missing odds default |
+| `server/test/sessionManager.test.js` | Create/get/expire (fake timers), TTL accuracy, bet store/retrieve/overwrite/clear |
+
+**Server — integration tests** (real HTTP via Fastify `inject()`, full request lifecycle):
+
+| File | Covers |
+|---|---|
+| `server/test/integration/rest.test.js` | All 7 REST routes: health, session CRUD, race state, monster bio, bet placement (7 edge cases), payout validation (win/loss/unauthenticated) |
+
+Integration tests use `buildApp({ logger: false, ws: false })` from `server/src/app.js` to get a fully configured Fastify instance without starting a server. `raceScheduler` is mocked per-test for full state control; `sessionManager` runs real in-memory.
+
+**Frontend:**
+
+| File | Covers |
+|---|---|
+| `src/test/richText.test.js` | All 11 tags, plain text, surrounding text, adjacency, unknown/unclosed tags, case-insensitivity |
+| `src/test/history.test.js` | `monsterHistory` appearance/win counts, `historyStats` aggregation, win rate precision, 50-race limit |
+
+### Test Mode (accelerated race timing)
+
+Set `TEST_MODE=true` in `server/.env` to collapse race timing for fast manual or E2E testing:
+
+| Setting | Normal | TEST_MODE |
+|---|---|---|
+| Race interval | 30–300s | 2–5s |
+| Race duration | 20–30s | 3–5s |
+| Betting closes before | 5s | 0.5s |
+| Legendary chance | 5% | 100% (every race) |
+
+When `TEST_MODE=true`, three admin endpoints are also registered (absent in normal runs):
+
+```
+POST /api/test/advance   # Jump to next race phase: waiting → racing → finished → waiting
+POST /api/test/reset     # Discard current race, schedule a fresh one immediately
+GET  /api/test/state     # Full unsanitised race state (includes hidden value field)
+```
+
+### Mocking patterns
+
+**Logger** — mock in every server test file that imports a module which uses the logger:
+```js
+vi.mock('../src/utils/logger.js', () => {
+  const noop = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };
+  return { logger: { child: () => noop, ...noop } };
+});
+```
+
+**Broadcaster** — mock when importing from `raceScheduler.js` (it imports broadcaster at module level):
+```js
+vi.mock('../src/services/broadcaster.js', () => ({ broadcast: vi.fn() }));
+```
+
+**Race state** (integration tests) — mock the entire `raceScheduler` module and control `getCurrentRace` per test:
+```js
+vi.mock('../../src/services/raceScheduler.js', () => ({
+  getCurrentRace: vi.fn(),
+  isBettingAllowed: vi.fn(),
+  addBetToTotal: vi.fn(),
+  racePayload: vi.fn(race => race),
+}));
+// In beforeEach:
+getCurrentRace.mockReturnValue({ id: 'race-1', state: 'waiting', monsters: [...], ... });
+```
+
+**RNG determinism** (unit tests) — seed before each test, reset after:
+```js
+beforeEach(() => setSeed('test-seed'));
+afterEach(() => resetSeed());
+```
+
+**Fake timers** (session TTL tests):
+```js
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2024-06-01')); });
+afterEach(() => vi.useRealTimers());
+// Advance time: vi.advanceTimersByTime(SESSION_TTL_MS + 1);
+```
+
+### Adding new tests
+
+**Server unit test** — create `server/test/<name>.test.js`. Mock logger and broadcaster if the module under test imports them (directly or transitively via `raceScheduler.js`). Seed the RNG if the module uses `random.js`.
+
+**Server integration test** — add to `server/test/integration/rest.test.js` or create a new file in that directory. Use `buildApp({ logger: false, ws: false })` in `beforeAll`, call `app.close()` in `afterAll`. Mock `raceScheduler` for race state; use the real `sessionManager` (create sessions via `POST /api/session`).
+
+**Frontend test** — create `src/test/<name>.test.js`. The jsdom environment provides localStorage. Import Svelte stores directly and use `get()` from `svelte/store` to read their current value; call `store.set([])` in `beforeEach` to reset state between tests.
+
+**General rules:**
+- No test should start a server, open a port, or make a network call
+- `vi.mock()` calls must appear before any imports (they are hoisted — do not reference outer variables inside the factory)
+- `vi.clearAllMocks()` in `beforeEach` when using mocked functions across tests
 
 ## VISUAL STYLE
 The UI, Theme, and Palette are dark Eldritch inspired.

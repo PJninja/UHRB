@@ -4,8 +4,7 @@ import { descriptions, blurbs, racingStyles } from '../data/bioData.js';
 import { bodyTypes, distinctiveFeatures, temperaments } from '../data/appearanceData.js';
 import { randomInt, selectRandom, shuffle, generateUUID, rollChance } from '../utils/random.js';
 import { legendaryMonsters } from '../data/legendaryMonsters.js';
-
-const LEGENDARY_CHANCE = 5;
+import { config } from '../config.js';
 
 /**
  * Calculate luck stat from letter variety.
@@ -132,7 +131,7 @@ export function generateRaceMonsters(count = null, previousMonsters = null, prev
   // Inject a legendary if: roll hits, one isn't already in the pool (e.g. as returning
   // champion), and at least one slot remains for it.
   const hasLegendary = monsters.some(m => m.isLegendary);
-  if (!hasLegendary && rollChance(LEGENDARY_CHANCE) && monsterCount - monsters.length > 0) {
+  if (!hasLegendary && rollChance(config.legendaryChance) && monsterCount - monsters.length > 0) {
     monsters.push(selectRandom(legendaryMonsters));
   }
 
