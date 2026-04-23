@@ -5,10 +5,10 @@
 // <glow>=A, <ancient>=C, <madness>=G, <blood>=T
 
 export const descriptions = [
-  { text: 'A <glow>swift</glow> nightmare that haunts the edges of reality',       letter: 'A', style: 'cosmic'  },
-  { text: 'An <ancient>ancient horror</ancient> that defies comprehension',         letter: 'C', style: 'cosmic'  },
-  { text: 'A writhing mass of <madness>impossible geometry</madness>',              letter: 'G', style: 'cosmic'  },
-  { text: 'A being of pure <madness>chaos and madness</madness>',                   letter: 'G', style: 'cosmic'  },
+  { text: 'A <glow>swift</glow> nightmare that haunts the edges of reality', letter: 'A', style: 'cosmic'  },
+  { text: 'An <ancient>ancient horror</ancient> that defies comprehension', letter: 'C', style: 'cosmic'  },
+  { text: 'A writhing mass of <madness>impossible geometry</madness>', letter: 'G', style: 'cosmic'  },
+  { text: 'A being of pure <madness>chaos and madness</madness>', letter: 'G', style: 'cosmic'  },
   { text: 'An entity that exists <glow>between dimensions</glow>',                  letter: 'A', style: 'cosmic'  },
   { text: 'A creature that <blood>feeds on fear</blood> itself',                    letter: 'T', style: 'cosmic'  },
   { text: 'Subject UH-7. Anomalous persistence documented across <ancient>all recorded race conditions</ancient>. File open', letter: 'C', style: 'bureau'   },
@@ -60,6 +60,17 @@ export const descriptions = [
   { text: 'A chosen of the <blood>Blood God</blood>, for whom racing is simply a form of prayer',           letter: 'T', style: 'cosmic'  },
   { text: 'Subject designated high-impact threat. <blood>Engagement not recommended</blood>. Racing, however, continues unchecked', letter: 'T', style: 'bureau'   },
   { text: 'Has a <blood>licensed sports nutritionist</blood> and a detailed pre-race meal plan. Both are terrifying', letter: 'T', style: 'bureau'   },
+  { text: 'A <glow>relentless pursuit predator</glow> that has never encountered anything faster than itself', letter: 'A', style: 'mundane'  },
+  { text: 'A thick-skinned migrant that has <ancient>walked every known circuit</ancient> and returned to race them properly', letter: 'C', style: 'mundane'  },
+  { text: 'An animal with <madness>no fixed taxonomy</madness> and a flexible attitude toward biology', letter: 'G', style: 'mundane'  },
+  { text: 'A migratory creature that <madness>should not be in this region</madness> by any map that still functions', letter: 'G', style: 'mundane'  },
+  { text: 'A creature that <ancient>heals faster than anything on the track</ancient> can damage it', letter: 'C', style: 'mundane'  },
+  { text: 'Permitted to race under <glow>Exemption 7-C</glow>. Previous permits: revoked, reinstated, revoked, and reinstated again', letter: 'A', style: 'bureau'   },
+  { text: 'Subject has attended <ancient>all mandatory briefings</ancient>. No evidence of comprehension. Racing continues', letter: 'C', style: 'bureau'   },
+  { text: 'Reclassification request <madness>denied on grounds that no applicable classification exists</madness>. Fourteenth filing', letter: 'G', style: 'bureau'   },
+  { text: 'Facility staff are instructed not to <blood>make eye contact during pre-race processing</blood>. Compliance is high', letter: 'T', style: 'bureau'   },
+  { text: 'A <blood>siege engine in an animal body</blood>, unaware of anything smaller than a structural wall', letter: 'T', style: 'mundane'  },
+  { text: 'A <glow>sprint specialist</glow> whose trainer describes the experience as "deeply personal and non-repeatable"', letter: 'A', style: 'mundane'  },
 ];
 
 export const blurbs = [
@@ -118,6 +129,18 @@ export const blurbs = [
   { text: 'Has been territorial enough to <blood>file legal ownership claims over every track it has won on</blood>', letter: 'T', style: 'bureau'   },
   { text: 'Received the <blood>Mark of Ruin</blood> during a previous race. The track has not been repaired', letter: 'T', style: 'cosmic'  },
   { text: 'Field notes: subject does not <blood>distinguish between competitors and obstacles</blood>. No incidents this week', letter: 'T', style: 'bureau'   },
+  { text: 'Finished last once. Has not <glow>forgiven the track</glow>',                                      letter: 'A', style: 'mundane'  },
+  { text: 'Outlived its veterinarian, its trainer, and the <ancient>building where it was first catalogued</ancient>', letter: 'C', style: 'mundane'  },
+  { text: 'Its species was <madness>discovered and immediately declassified</madness>',                        letter: 'G', style: 'mundane'  },
+  { text: 'Reportedly affectionate with its handlers. The handlers have <blood>mixed feelings about this</blood>', letter: 'T', style: 'mundane'  },
+  { text: 'Submitted a formal <glow>timing objection</glow> on behalf of itself. The objection was upheld',   letter: 'A', style: 'bureau'   },
+  { text: '<ancient>Compliance-assessed eleven times</ancient>. Results: inconclusive across all eleven',      letter: 'C', style: 'bureau'   },
+  { text: 'The Bureau has assigned three analysts to its <madness>paperwork trail</madness>. None have finished', letter: 'G', style: 'bureau'   },
+  { text: 'Forms on file include a <blood>blanket waiver of liability for all finish line structures</blood>', letter: 'T', style: 'bureau'   },
+  { text: 'Its pre-race warm-up routine was <glow>cited in a Bureau efficiency review</glow> as a model for other subjects', letter: 'A', style: 'bureau'   },
+  { text: 'Holds an <ancient>unbroken attendance record</ancient> that no one asked it to maintain and no one knows how to stop', letter: 'C', style: 'bureau'   },
+  { text: 'Has a <blood>strongly worded opinion about winning</blood> and communicates it non-verbally to the other competitors', letter: 'T', style: 'mundane'  },
+  { text: 'Spotted racing alone three weeks before this event. <madness>The track did not exist yet</madness>', letter: 'G', style: 'bureau'   },
 ];
 
 export const racingStyles = [
@@ -176,4 +199,6 @@ export const racingStyles = [
   { text: 'Storms the track with the <blood>blessed fury of its patron ringing in its bones</blood>',      letter: 'T', style: 'cosmic'  },
   { text: 'Presses forward at a <blood>steady, implacably grinding</blood> pace',                          letter: 'T', style: 'mundane' },
   { text: 'Advances. <blood>Subject has not been observed stopping</blood> in any documented field session', letter: 'T', style: 'bureau'  },
+  { text: 'Fills out form <ancient>A11-MOVE-65b</ancient> and waits for review',                            letter: 'C', style: 'bureau'  },
+  { text: 'Skips the line then threatens to <madness>rewrite the rules of the track</madness>',             letter: 'G', style: 'bureau'  },
 ];

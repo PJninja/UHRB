@@ -87,7 +87,7 @@ export const nameSuffixes = [
   { text: 'PhD',                  letter: 'A', style: 'bureau'  },
   { text: 'the Unyielding',       letter: 'C', style: 'cosmic'  },
   { text: 'the Perpetual',        letter: 'C', style: 'cosmic'  },
-  { text: 'of the Long Watch',    letter: 'C', style: 'bureau'  },
+  { text: 'of the Night Watch',    letter: 'C', style: 'bureau'  },
   { text: 'the Inevitable',       letter: 'C', style: 'cosmic'  },
   { text: 'IV',                   letter: 'C', style: 'mundane' },
   { text: 'the Unbroken',         letter: 'T', style: 'cosmic'  },

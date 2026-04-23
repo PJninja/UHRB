@@ -5,6 +5,7 @@
   import { getMonsterBio } from '../lib/services/api.js';
   import BettingContext from '../lib/components/BettingContext.svelte';
   import RichText from '../lib/components/RichText.svelte';
+  import RaceTimer from '../lib/components/RaceTimer.svelte';
 
   export let params = {};
 
@@ -154,7 +155,7 @@
             </div>
             <div class="info-item">
               <span class="label">Weight</span>
-              <span class="value">{bioData ? `${bioData.weight} tons` : '—'}</span>
+              <span class="value">{bioData ? `${bioData.weight} lbs` : '—'}</span>
             </div>
           </div>
         </section>
@@ -195,6 +196,7 @@
 
       <!-- Aside: betting context, audience favor, field classification -->
       <aside class="bio-aside">
+        <RaceTimer />
         <BettingContext {monster} />
 
         {#if monster.audienceFavor}
@@ -335,7 +337,6 @@
 
   .origin-strip-value {
     font-size: 1rem;
-    font-style: italic;
     font-weight: 600;
     color: var(--text-primary);
   }
@@ -477,7 +478,7 @@
   }
 
   .favor-desc {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-style: italic;
     color: var(--text-secondary);
     line-height: 1.5;

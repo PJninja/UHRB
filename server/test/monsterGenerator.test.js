@@ -74,12 +74,16 @@ describe('generateMonster', () => {
     expect(ids.size).toBe(20);
   });
 
-  it('luck is within [1, 10]', () => {
+  it('luck is within [1, 4] and varies across seeds', () => {
+    const seen = new Set();
     for (let i = 0; i < 30; i++) {
+      setSeed(`luck-test-${i}`);
       const { traits } = generateMonster();
       expect(traits.luck).toBeGreaterThanOrEqual(1);
-      expect(traits.luck).toBeLessThanOrEqual(10);
+      expect(traits.luck).toBeLessThanOrEqual(4);
+      seen.add(traits.luck);
     }
+    expect(seen.size).toBeGreaterThan(1);
   });
 
   it('produces deterministic output with the same seed', () => {
@@ -90,6 +94,52 @@ describe('generateMonster', () => {
     expect(a.id).toBe(b.id);
     expect(a.name).toBe(b.name);
     expect(a.traits).toEqual(b.traits);
+  });
+
+  describe('height and weight by style', () => {
+    const sample = (style) => {
+      const results = [];
+      for (let i = 0; i < 60; i++) {
+        setSeed(`hw-${i}`);
+        const m = generateMonster();
+        if (m.style === style) results.push(m);
+      }
+      return results;
+    };
+
+    it('mundane monsters are human-scale (height 1–3 m, weight 90–300 lbs)', () => {
+      const monsters = sample('mundane');
+      expect(monsters.length).toBeGreaterThan(0);
+      monsters.forEach(m => {
+        expect(m.height).toBeGreaterThanOrEqual(1);
+        expect(m.height).toBeLessThanOrEqual(3);
+        expect(m.weight).toBeGreaterThanOrEqual(90);
+        expect(m.weight).toBeLessThanOrEqual(300);
+      });
+    });
+
+    it('bureau monsters are human-scale (height 1–3 m, weight 90–300 lbs)', () => {
+      const monsters = sample('bureau');
+      expect(monsters.length).toBeGreaterThan(0);
+      monsters.forEach(m => {
+        expect(m.height).toBeGreaterThanOrEqual(1);
+        expect(m.height).toBeLessThanOrEqual(3);
+        expect(m.weight).toBeGreaterThanOrEqual(90);
+        expect(m.weight).toBeLessThanOrEqual(300);
+      });
+    });
+
+    it('cosmic monsters use the large range (height 0–300 m, weight 0–1000 t)', () => {
+      const monsters = sample('cosmic');
+      expect(monsters.length).toBeGreaterThan(0);
+      monsters.forEach(m => {
+        expect(m.height).toBeGreaterThanOrEqual(0);
+        expect(m.height).toBeLessThanOrEqual(300);
+        expect(m.weight).toBeGreaterThanOrEqual(0);
+        expect(m.weight).toBeLessThanOrEqual(1000);
+      });
+      expect(monsters.some(m => m.height > 3)).toBe(true);
+    });
   });
 });
 

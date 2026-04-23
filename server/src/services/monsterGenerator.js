@@ -2,7 +2,7 @@
 import { namePrefixes, nameSuffixes, locations } from '../data/nameData.js';
 import { descriptions, blurbs, racingStyles } from '../data/bioData.js';
 import { bodyTypes, distinctiveFeatures, temperaments } from '../data/appearanceData.js';
-import { randomInt, selectRandom, shuffle, generateUUID, rollChance } from '../utils/random.js';
+import { randomInt, random, selectRandom, shuffle, generateUUID, rollChance } from '../utils/random.js';
 import { legendaryMonsters } from '../data/legendaryMonsters.js';
 import { config } from '../config.js';
 
@@ -17,11 +17,11 @@ function filterByStyle(pool, style) {
  * Calculate luck stat from letter variety.
  * More unique letters across all selections = higher luck.
  * @param {string[]} letters
- * @returns {number} 1–10
+ * @returns {number} 1–4
  */
 function calculateLuck(letters) {
   const uniqueCount = new Set(letters).size;
-  return Math.min(10, Math.max(1, Math.round(uniqueCount * 2.5)));
+  return Math.min(10, Math.max(1, uniqueCount));
 }
 
 /**
@@ -38,7 +38,8 @@ function countLetter(letters, target) {
  * Stats are derived entirely from the letters of the selected entries.
  */
 export function generateMonster() {
-  const style = STYLES[randomInt(0, STYLES.length - 1)];
+  const roll = random();
+  const style = roll < 0.5 ? 'cosmic' : roll < 0.75 ? 'mundane' : 'bureau';
 
   const desc        = selectRandom(filterByStyle(descriptions, style));
   const blurb       = selectRandom(filterByStyle(blurbs, style));
@@ -93,8 +94,8 @@ export function generateMonster() {
     bodyType:       bodyType.text,
     bodyTypeLetter: bodyType.letter,
     features:    features.text,
-    height:      randomInt(0, 300),
-    weight:      randomInt(0, 1000),
+    height:      style === 'cosmic' ? randomInt(0, 300)                                       : randomInt(1, 3),
+    weight:      style === 'cosmic' ? randomInt(0, 1000) : randomInt(90, 300),
     temperament: temperament.text,
     style,
     traits,

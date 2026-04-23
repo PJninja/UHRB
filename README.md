@@ -84,7 +84,7 @@ Use `dev.bat` to start both with one command on Windows.
 
 ## Testing
 
-Both packages use [Vitest](https://vitest.dev/). Run `test.bat` from the project root to execute all 138 tests across both suites and pause to read the results, or run `npm test` individually from the root (frontend) or `/server` (backend). No running server or network connection is required — all tests are in-process with dependencies mocked.
+Both packages use [Vitest](https://vitest.dev/). Run `test.bat` from the project root to execute all tests across both suites and pause to read the results, or run `npm test` individually from `/client` (frontend) or `/server` (backend). No running server or network connection is required — all tests are in-process with dependencies mocked.
 
 ## Build
 

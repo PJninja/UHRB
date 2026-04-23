@@ -209,7 +209,7 @@
   }
 
   .odds-hint {
-    font-size: 0.8rem;
+    font-size: 1rem;
     font-style: italic;
     color: var(--text-secondary);
     margin: 0.5rem 0 0;

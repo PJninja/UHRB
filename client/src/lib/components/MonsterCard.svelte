@@ -115,7 +115,7 @@
           </div>
           <div class="info-item">
             <span class="label">Weight:</span>
-            <span class="value">{monster.weight} tons</span>
+            <span class="value">{monster.weight} lbs</span>
           </div>
         </div>
       </div>
