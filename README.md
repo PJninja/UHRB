@@ -3,6 +3,7 @@
 UHRB is a browser-based game where you bet candies on the outcome of a race between procedurally generated unspeakable monstrosities.
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/8a96ff5a-c8f8-4970-a616-f7a5d666d8ac/deploy-status)](https://app.netlify.com/projects/uhrb/deploys)
+[![Unit Tests](https://github.com/PJninja/UHRB/actions/workflows/ci.yml/badge.svg)](https://github.com/PJninja/UHRB/actions/workflows/ci.yml)
 
 ## Tech Stack
 
