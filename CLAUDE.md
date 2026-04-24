@@ -32,6 +32,29 @@ test.bat         # Run all tests and pause to read results (Windows)
 test.bat --ci    # Run all tests without pausing (any arg skips pause)
 ```
 
+### Simulation (`/server/scripts/simulate.js`)
+
+Runs hundreds or thousands of races without a server to verify balance and emergent behavior. Calls `generateRaceMonsters`, `calculateOdds`, and `simulateRace` directly. Always chains races (previous winner returns as champion), matching real server behavior. Results are fully deterministic when `--seed` is provided.
+
+```bash
+node server/scripts/simulate.js [options]
+
+# Options:
+#   --races  <N>              Number of races to run (default: 100)
+#   --seed   <string>         Base seed for reproducible runs
+#   --format <table|json|csv> Output format (default: table)
+#   --output <filepath>       Write output to file instead of stdout
+#   --quiet                   Suppress per-race output; show only summary
+
+# Examples:
+node server/scripts/simulate.js --races 1000 --quiet
+node server/scripts/simulate.js --races 500 --seed my-seed --quiet
+node server/scripts/simulate.js --races 1000 --format json --output results.json
+node server/scripts/simulate.js --races 1000 --format csv  --output results.csv
+```
+
+**When to use:** after changing `calculateOdds`, `calculatePerformance`, `generateRaceMonsters`, or any stat/value weights. Unit tests verify correctness of individual functions; the simulator catches balance issues that only emerge at scale — win-rate distributions, dynasty streaks, odds clustering, and stat dominance.
+
 ## Architecture
 
 The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fastify REST API (`/server`). They communicate via WebSocket (real-time push) and REST calls.
@@ -70,7 +93,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fa
 - **`/routes/rest.js`** — REST handlers: `GET /api/session`, `POST /api/session` (20/min), `GET /api/session/:id/validate`, `GET /api/race/current`, `POST /api/race/:raceId/bet` (60/min), `POST /api/race/:raceId/payout/validate` (60/min); write endpoints have per-route rate limits tighter than the global
 - **`/routes/ws.js`** — WebSocket handler at `/ws`; registers/removes clients via broadcaster; sends current race state on connect
 - **`/services/raceScheduler.js`** — owns the race lifecycle state machine (`waiting` → `racing` → `finished`); schedules next race; exports `sanitizeMonster` (strips `value`, `description`, `blurb`, `height`, `weight`, `features`; adds `isReturningChampion`, `audienceFavor`, `bodyTypeLetter`) and `racePayload` (includes `winner` + `rankings` once racing, so client visuals match server outcome); bet-total broadcasts are debounced 300ms; `BETTING_CLOSE_BEFORE_MS = 5000`
-- **`/services/raceSimulator.js`** — **server-authoritative** outcome; seeded RNG for deterministic results; race duration 20–30s; odds = 70% stats + 30% value; Beloved tier (value ≤ 20) hard-capped at 1.5×; legendaries capped at 2.0×
+- **`/services/raceSimulator.js`** — **server-authoritative** outcome; seeded RNG for deterministic results; race duration 20–30s; `calculatePerformance` weights: speed×2.5, endurance×1.5, luck×1.5, strength×1.0; madness governs chaos variance only (not power); odds = 70% stats + 30% value (high value = crowd favorite = lower return); legendaries capped at 1.5×; audienceFavor tier is derived from the blended odds (not value alone), so stat total and value both influence the displayed crowd sentiment
 - **`/services/monsterGenerator.js`** — seeded monster generation; text entries are `{ text, letter }` pairs; stats derived by counting letters across all selected texts; exposes `bodyTypeLetter` on the monster object (passed through by `sanitizeMonster`)
 - **`/services/broadcaster.js`** — WebSocket broadcaster; Set of sockets; stale sockets (throw on send) auto-removed; `WS_OPEN = 1` constant
 - **`/services/payoutValidator.js`** — anti-cheat: recomputes payout as `bet × odds`; value is already baked into odds (no separate multiplier)
@@ -86,7 +109,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fa
 - **Monster generation is server-only.** The server sends sanitized monster objects over the API/WebSocket; the client only renders them.
 - **`value` is a hidden stat** (stripped by `sanitizeMonster` before any API response) applied as a payout multiplier on wins. Players never see it.
 - **No stat numbers are ever shown.** The Bio page uses prose, RichText effects, and a **Field Classification** card (two alchemical symbols: power tier + dominant stat; plus a Class Level letter from `bodyTypeLetter`) to let players infer stat strength without displaying digits. Players decode the symbol system empirically by cross-referencing the bio with race outcomes over time.
-- **Text entries encode stats:** every catalog entry is `{ text, letter }` where letter ∈ {A=Speed, C=Endurance, G=Madness, T=Strength}. RichText tags in entry text visually reinforce the stat category: A→`<glow>`, C→`<ancient>`, G→`<madness>`, T→`<blood>`.
+- **Text entries encode stats:** every catalog entry is `{ text, letter }` where letter ∈ {A=Speed, C=Endurance, G=Madness, T=Strength}. RichText tags in entry text visually reinforce the stat category: A→`<glow>`, C→`<ancient>`, G→`<madness>`, T→`<blood>`. **Luck is not letter-encoded** — it is derived from letter *variety*: the count of unique letters across all selected entries (1–4 for generated monsters). Higher variety = higher luck. Luck has a 1.5× weight in `calculatePerformance` and is included in the odds win-probability sum; it is a real mechanical stat, not cosmetic.
 - **Two-simulation architecture:** the server computes the authoritative winner (seeded RNG); the client runs a visual-only simulation using `serverRankings` from the WebSocket payload to guarantee the visual outcome matches the server result.
 - **All bet validation happens server-side.** The payout validator endpoint exists specifically to prevent client-side cheating.
 - **No database** — all state is in-memory. Sessions expire after 24 hours (configurable via `SESSION_TTL_MS`). History is persisted in localStorage (last 50 races).

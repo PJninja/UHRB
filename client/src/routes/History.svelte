@@ -64,7 +64,7 @@
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value">{$historyStats.totalRaces}</div>
-        <div class="stat-label">Races Witnessed</div>
+        <div class="stat-label">Races Bet On</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{$historyStats.racesWithBet > 0 ? $historyStats.winRate : '—'}

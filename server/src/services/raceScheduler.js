@@ -18,9 +18,9 @@ const log = logger.child({ module: 'raceScheduler' });
  */
 export function sanitizeMonster(monster, isChampion = false) {
   const { value, ...visibleTraits } = monster.traits;
-  // Invert value → favor: value 1–20 = favor 5 (Beloved), value 81–100 = favor 1 (Despised).
+  // value 1–20 = favor 1 (Despised/underdog = higher payout), value 81–100 = favor 5 (Beloved/crowd favourite = lower payout).
   // High favor = crowd expects them to win = lower payout. Low favor = underdog = higher payout.
-  const audienceFavor = Math.max(1, 6 - Math.ceil(value / 20));
+  const audienceFavor = Math.min(5, Math.ceil(value / 20));
   const { description, blurb, height, weight, features, ...rest } = monster;
   return { ...rest, traits: visibleTraits, isReturningChampion: isChampion, audienceFavor };
 }

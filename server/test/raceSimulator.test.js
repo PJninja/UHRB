@@ -28,7 +28,7 @@ describe('calculateOdds', () => {
     expect(odds).toHaveProperty('b');
   });
 
-  it('all odds are within [1.5, 10.0]', () => {
+  it('all odds are within [1.1, 200.0]', () => {
     const monsters = [
       makeMonster({ id: 'a', traits: { speed: 10, endurance: 10, strength: 10, luck: 10, madness: 1, value: 1 } }),
       makeMonster({ id: 'b', traits: { speed: 1, endurance: 1, strength: 1, luck: 1, madness: 1, value: 100 } }),
@@ -36,27 +36,27 @@ describe('calculateOdds', () => {
     ];
     const odds = calculateOdds(monsters);
     Object.values(odds).forEach(o => {
-      expect(o).toBeGreaterThanOrEqual(1.5);
-      expect(o).toBeLessThanOrEqual(10);
+      expect(o).toBeGreaterThanOrEqual(1.1);
+      expect(o).toBeLessThanOrEqual(200);
     });
   });
 
-  it('high-value monster has higher odds than low-value monster with equal stats', () => {
+  it('high-value monster (crowd favorite) has lower odds than low-value monster with equal stats', () => {
     const monsters = [
       makeMonster({ id: 'high', traits: { speed: 5, endurance: 5, strength: 5, luck: 5, madness: 5, value: 95 } }),
       makeMonster({ id: 'low',  traits: { speed: 5, endurance: 5, strength: 5, luck: 5, madness: 5, value: 5 } }),
     ];
     const odds = calculateOdds(monsters);
-    expect(odds['high']).toBeGreaterThan(odds['low']);
+    expect(odds['high']).toBeLessThan(odds['low']);
   });
 
-  it('legendary monster is capped at 2.0×', () => {
+  it('legendary monster is capped at 1.5×', () => {
     const monsters = [
       makeMonster({ id: 'legend', isLegendary: true, traits: { speed: 1, endurance: 1, strength: 1, luck: 1, madness: 1, value: 1 } }),
       makeMonster({ id: 'normal' }),
     ];
     const odds = calculateOdds(monsters);
-    expect(odds['legend']).toBeLessThanOrEqual(2.0);
+    expect(odds['legend']).toBeLessThanOrEqual(1.5);
   });
 
   it('non-legendary monsters get a boost when a legendary is in the race', () => {

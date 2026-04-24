@@ -175,18 +175,18 @@ describe('generateRaceMonsters', () => {
     expect(returner).toBeDefined();
   });
 
-  it('reduces champion value by 20 (CHAMPION_FAVOR_BOOST), min 1', () => {
+  it('increases champion value by 20 (CHAMPION_FAVOR_BOOST), max 100', () => {
     const champion = { ...generateMonster(), traits: { ...generateMonster().traits, value: 50 } };
     const monsters = generateRaceMonsters(5, [champion], champion);
     const returned = monsters.find(m => m.id === champion.id);
-    expect(returned.traits.value).toBe(30);
+    expect(returned.traits.value).toBe(70);
   });
 
-  it('champion value does not go below 1', () => {
-    const champion = { ...generateMonster(), traits: { ...generateMonster().traits, value: 10 } };
+  it('champion value does not exceed 100', () => {
+    const champion = { ...generateMonster(), traits: { ...generateMonster().traits, value: 90 } };
     const monsters = generateRaceMonsters(5, [champion], champion);
     const returned = monsters.find(m => m.id === champion.id);
-    expect(returned.traits.value).toBeGreaterThanOrEqual(1);
+    expect(returned.traits.value).toBeLessThanOrEqual(100);
   });
 
   it('never exceeds requested count', () => {
@@ -259,13 +259,13 @@ describe('sanitizeMonster', () => {
     }
   });
 
-  it('low value → high audienceFavor (crowd favourite)', () => {
-    const m = { ...generateMonster(), traits: { ...generateMonster().traits, value: 1 } };
+  it('high value → high audienceFavor (crowd favourite)', () => {
+    const m = { ...generateMonster(), traits: { ...generateMonster().traits, value: 100 } };
     expect(sanitizeMonster(m).audienceFavor).toBe(5);
   });
 
-  it('high value → low audienceFavor (underdog)', () => {
-    const m = { ...generateMonster(), traits: { ...generateMonster().traits, value: 100 } };
+  it('low value → low audienceFavor (underdog)', () => {
+    const m = { ...generateMonster(), traits: { ...generateMonster().traits, value: 1 } };
     expect(sanitizeMonster(m).audienceFavor).toBe(1);
   });
 

@@ -22,7 +22,6 @@ export const namePrefixes = [
   { text: 'Nyarlathotep',  style: 'cosmic'  },
   { text: 'Kevin',         style: 'mundane' },
   { text: 'Bob',           style: 'mundane' },
-  { text: 'Shub-Niggurath', style: 'cosmic' },
   { text: 'Velzoth',       style: 'cosmic'  },
   { text: 'Brenda',        style: 'mundane' },
   { text: "Qua'athos",     style: 'cosmic'  },

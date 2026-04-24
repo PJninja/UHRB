@@ -108,20 +108,21 @@ export function generateMonster() {
  * @param {object[]} previousMonsters - From the previous race (optional returners)
  * @param {object|null} previousWinner - Always included in the next race
  */
-// Each time the champion returns their crowd favor grows, reducing their effective payout.
+// Each time the champion returns their crowd favor grows, increasing value (capped at 100).
 const CHAMPION_FAVOR_BOOST = 20;
 
 export function generateRaceMonsters(count = null, previousMonsters = null, previousWinner = null) {
+  if (previousWinner?.isLegendary) previousWinner = null;
   const monsterCount = count || randomInt(4, 6);
 
-  // The returning champion always gets a slot, with a favor boost (value reduction).
+  // The returning champion always gets a slot, with a favor boost (value increase).
   let monsters;
   if (previousWinner) {
     const boostedChampion = {
       ...previousWinner,
       traits: {
         ...previousWinner.traits,
-        value: Math.max(1, previousWinner.traits.value - CHAMPION_FAVOR_BOOST),
+        value: Math.min(100, previousWinner.traits.value + CHAMPION_FAVOR_BOOST),
       },
     };
     monsters = [boostedChampion];

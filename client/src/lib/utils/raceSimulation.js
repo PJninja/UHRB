@@ -1,6 +1,32 @@
 // Race simulation logic
 import { randomInt } from './random.js';
 
+function selectOutliers(performances) {
+  const hasRunaway   = Math.random() < 0.15;
+  const hasStraggler = Math.random() < 0.25;
+
+  let runawayId  = null;
+  let stragglerI = null;
+
+  if (hasRunaway && performances.length >= 2) {
+    // Exclude last-place finisher — too far from targetFinal to transition smoothly
+    const candidates = performances.filter((_, i) => i < performances.length - 1);
+    runawayId = candidates[Math.floor(Math.random() * candidates.length)].id;
+  }
+
+  if (hasStraggler && performances.length >= 2) {
+    // Exclude 1st-place finisher and runaway monster
+    const candidates = performances
+      .filter((_, i) => i > 0)
+      .filter(p => p.id !== runawayId);
+    if (candidates.length > 0) {
+      stragglerI = candidates[Math.floor(Math.random() * candidates.length)].id;
+    }
+  }
+
+  return { runawayId, stragglerI };
+}
+
 /**
  * Calculate a monster's race performance score
  * Combines stats with randomness to determine race outcome
@@ -83,20 +109,42 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
   //     they actually are at the diverge frame to their authoritative finish position.
   //     Because targetFinal (85–100%) is always ≥ the typical free position at diverge
   //     (~79%), this always moves forward — no freezing.
-  const DIVERGE_PHASE = 0.68;
-  const divergeFrame  = Math.floor(DIVERGE_PHASE * frameCount);
-  const easeAtDiverge = easeTable[divergeFrame];
-  const easeRemaining = easeTable[frameCount] - easeAtDiverge; // remaining ease budget
+  const DIVERGE_PHASE         = 0.68;
+  const OUTLIER_DIVERGE_PHASE = 0.55; // outliers blend back earlier, giving more time to return
+  const RUNAWAY_SPEED_BIAS    = 0.55; // added to speedBias for dramatic forward surge
+  const RUNAWAY_NOISE_MULT    = 0.40; // tightens noise so the surge looks deliberate
+  const STRAGGLER_SPEED_BIAS  = 0.55; // subtracted from speedBias to drag the walk backward
+  const STRAGGLER_NOISE_MULT  = 0.45;
+
+  const defaultDivergeFrame = Math.floor(DIVERGE_PHASE * frameCount);
+  const outliers = selectOutliers(performances);
 
   const positionCurves = {};
   const velocityCurves = {};
   performances.forEach(perf => {
+    const isRunaway   = perf.id === outliers.runawayId;
+    const isStraggler = perf.id === outliers.stragglerI;
+
+    const divergeFrame  = (isRunaway || isStraggler)
+      ? Math.floor(OUTLIER_DIVERGE_PHASE * frameCount)
+      : defaultDivergeFrame;
+    const easeAtDiverge = easeTable[divergeFrame];
+    const easeRemaining = easeTable[frameCount] - easeAtDiverge;
+
     const { normalizedPerf } = perf;
     const { speed, endurance, strength } = perf.monster.traits;
 
-    const speedBias   = ((speed     - 1) / 9) * 0.25;
-    const noiseScale  = 0.20 * (1 - ((endurance - 1) / 9) * 0.65);
+    let speedBias   = ((speed     - 1) / 9) * 0.25;
+    let noiseScale  = 0.20 * (1 - ((endurance - 1) / 9) * 0.65);
     const maxVelocity = 1.5 + ((strength - 1) / 9) * 1.5;
+
+    if (isRunaway) {
+      speedBias  += RUNAWAY_SPEED_BIAS;
+      noiseScale *= RUNAWAY_NOISE_MULT;
+    } else if (isStraggler) {
+      speedBias  -= STRAGGLER_SPEED_BIAS;
+      noiseScale *= STRAGGLER_NOISE_MULT;
+    }
 
     const raw = new Array(frameCount + 1);
     const velocities = new Array(frameCount + 1);
@@ -121,14 +169,17 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
       positionCurve[i] = (raw[i] / rawFinal) * 100;
     }
 
-    // Phase 2: interpolate forward from the diverge position to targetFinal.
-    // Because targetFinal ≥ ~85 and freePos at diverge ≈ 79, this is always forward.
-    // Monotonic clamp handles the rare case where a leading monster finishes lower.
+    // Phase 2: interpolate from the diverge position to targetFinal.
+    // Non-outliers: monotonic clamp prevents backward motion (targetFinal always ≥ freeAtDiverge).
+    // Outliers: clamp removed — runaways must slide back from ~120+ to their targetFinal;
+    //           stragglers always move forward so it's moot, but consistency is cleaner.
     const freeAtDiverge = positionCurve[divergeFrame];
     for (let i = divergeFrame + 1; i <= frameCount; i++) {
       const t2 = (easeTable[i] - easeAtDiverge) / easeRemaining; // 0 → 1
       const target = freeAtDiverge + t2 * (targetFinal - freeAtDiverge);
-      positionCurve[i] = Math.max(positionCurve[i - 1], target);
+      positionCurve[i] = (isRunaway || isStraggler)
+        ? target
+        : Math.max(positionCurve[i - 1], target);
     }
 
     positionCurves[perf.id] = positionCurve;
@@ -159,6 +210,7 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     })),
     frames,
     duration,
+    outliers,
   };
 }
 

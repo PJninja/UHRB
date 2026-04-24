@@ -86,6 +86,8 @@ Use `dev.bat` to start both with one command on Windows.
 
 Both packages use [Vitest](https://vitest.dev/). Run `test.bat` from the project root to execute all tests across both suites and pause to read the results, or run `npm test` individually from `/client` (frontend) or `/server` (backend). No running server or network connection is required — all tests are in-process with dependencies mocked.
 
+For balance and emergent behavior testing, use the bulk race simulator: `node server/scripts/simulate.js --races 1000 --quiet`. This runs races directly against the server's generation and simulation logic without starting a server, and is the right tool to reach for after changes to odds, stats, or race generation.
+
 ## Build
 
 ```bash

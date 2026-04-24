@@ -18,7 +18,7 @@ export const legendaryMonsters = [
     weight: 0,
     temperament: '<hex>Unknowably distracted</hex>',
     isLegendary: true,
-    traits: { speed: 9, endurance: 3, madness: 9, strength: 4, luck: 8, value: 6 },
+    traits: { speed: 7, endurance: 1, madness: 7, strength: 2, luck: 5, value: 95 },
   },
   {
     id: 'legendary-pale-accountant',
@@ -33,7 +33,7 @@ export const legendaryMonsters = [
     weight: 71,
     temperament: '<ancient>Professionally indifferent</ancient> — not hostile, simply occupied with other considerations',
     isLegendary: true,
-    traits: { speed: 3, endurance: 10, madness: 2, strength: 6, luck: 5, value: 8 },
+    traits: { speed: 2, endurance: 7, madness: 1, strength: 4, luck: 5, value: 90 },
   },
   {
     id: 'legendary-booshy',
@@ -48,7 +48,7 @@ export const legendaryMonsters = [
     weight: 0,
     temperament: '<hex>Calm</hex> - yet <madness>mad</madness> in a way that is difficult to understand',
     isLegendary: true,
-    traits: { speed: 5, endurance: 5, madness: 10, strength: 5, luck: 5, value: 7 },
+    traits: { speed: 3, endurance: 3, madness: 7, strength: 3, luck: 5, value: 92 },
   },
   {
     id: 'legendary-grey',
@@ -63,7 +63,7 @@ export const legendaryMonsters = [
     weight: 1,
     temperament: '<ancient>Has Been and Will Always Be</ancient>',
     isLegendary: true,
-    traits: { speed: 5, endurance: 5, madness: 1, strength: 1, luck: 5, value: 1 },
+    traits: { speed: 4, endurance: 4, madness: 1, strength: 1, luck: 4, value: 85 },
   },
   {
     id: 'legendary-flippo',
@@ -78,6 +78,6 @@ export const legendaryMonsters = [
     weight: 0,
     temperament: '<void>Serenely unknowable</void> — Murmurath does not appear to be troubled by anything, which is itself troubling',
     isLegendary: true,
-    traits: { speed: 6, endurance: 5, madness: 6, strength: 3, luck: 10, value: 9 },
+    traits: { speed: 5, endurance: 4, madness: 5, strength: 1, luck: 7, value: 98 },
   },
 ];

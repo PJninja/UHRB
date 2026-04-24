@@ -118,13 +118,13 @@ export function calculateOdds(monsters) {
   });
   const grandTotal = statTotals.reduce((sum, m) => sum + m.total, 0);
 
-  // Odds range [1.5, 10]. Value maps linearly across the full range:
-  // value=1 (Beloved) → 1.5× (low payout), value=100 (Despised) → 10× (high payout).
-  // Final odds = 70% stats component + 30% value component.
-  // Legendary adjustment: legendary monsters are crowd-recognized and capped at low payout;
-  // rivals racing against one get a boost (crowd underestimates them by comparison).
+  // Stats component uses a power-damped reciprocal so typical win probabilities (15–35%)
+  // map to statsOdds in the 1.7–3.1× range rather than 3–7×, filling the mid-range
+  // of the distribution. Relative ordering is fully preserved; only the scale compresses.
+  // value maps linearly across [1.1, 10] (30% weight).
+  // Legendary adjustment: rivals racing against a legendary get a boost (crowd underestimates
+  // them by comparison). No hard caps — the formula produces natural graduation.
   const hasLegendary = monsters.some(m => m.isLegendary);
-  const LEGENDARY_MAX_ODDS = 2.0;
   const LEGENDARY_RIVAL_BOOST = 2.0;
 
   monsters.forEach(monster => {
@@ -132,20 +132,16 @@ export function calculateOdds(monsters) {
     const statTotal = statTotals.find(s => s.id === monster.id).total;
 
     const winProbability = statTotal / grandTotal;
-    const statsOdds = Math.min(10, Math.max(1.5, 1 / winProbability));
-    const valueOdds  = 1.5 + (value / 100) * 8.5;
+    const statsOdds = Math.min(200, Math.max(1.1, Math.pow(1 / winProbability, 0.45)));
+    const valueOdds  = 7.0 - ((value - 1) / 99) * 5.9;
 
-    const blended = 0.7 * statsOdds + 0.3 * valueOdds;
-    let finalOdds = Math.min(10, Math.max(1.5, blended));
-
-    if (value <= 20) {
-      finalOdds = Math.min(finalOdds, 1.5);  // Beloved tier: cap return at 1.5×
-    }
+    const blended = 0.3 * statsOdds + 0.7 * valueOdds;
+    let finalOdds = Math.min(200, Math.max(1.1, blended));
 
     if (monster.isLegendary) {
-      finalOdds = Math.min(finalOdds, LEGENDARY_MAX_ODDS);
+      finalOdds = Math.min(finalOdds, 1.5);
     } else if (hasLegendary) {
-      finalOdds = Math.min(10, finalOdds * LEGENDARY_RIVAL_BOOST);
+      finalOdds = Math.min(200, finalOdds * LEGENDARY_RIVAL_BOOST);
     }
 
     odds[monster.id] = Math.round(finalOdds * 100) / 100;

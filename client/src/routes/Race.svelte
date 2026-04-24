@@ -51,6 +51,10 @@
   let prevNeckAndNeckActive = false;
   let milestone50Fired = false;
   let milestone75Fired = false;
+  let runawayId = null;
+  let stragglerIId = null;
+  let outlierRunawayFired = false;
+  let outlierStragglerFired = false;
 
   function buildCommentary(monsterList) {
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -214,6 +218,30 @@
         'The finish line is close enough to smell. It smells like inevitability.',
       ]));
     }
+
+    // Outlier: runaway surging far ahead of the pack
+    if (runawayId && !outlierRunawayFired && raceProgress >= 0.18) {
+      outlierRunawayFired = true;
+      const m = raceMonsters.find(m => m.id === runawayId);
+      if (m) injectEventLine(pick([
+        `<glow>${m.name}</glow> is leaving the pack in the dust. The gap is becoming difficult to explain.`,
+        `${m.name} surges ahead with a velocity that troubles the officials. Something has changed.`,
+        `The distance between ${m.name} and the rest is no longer a gap. It is a statement.`,
+        `<cosmic>${m.name} has decided the other competitors are not relevant.</cosmic>`,
+      ]));
+    }
+
+    // Outlier: straggler falling far behind the pack
+    if (stragglerIId && !outlierStragglerFired && raceProgress >= 0.22) {
+      outlierStragglerFired = true;
+      const m = raceMonsters.find(m => m.id === stragglerIId);
+      if (m) injectEventLine(pick([
+        `${m.name} has fallen desperately behind. The pack does not look back.`,
+        `<blood>${m.name}</blood> trails alone. Whatever is happening to them, it is private.`,
+        `The distance between ${m.name} and the field is growing. The officials have stopped measuring.`,
+        `${m.name} moves at a pace that suggests reconsideration of the entire enterprise.`,
+      ]));
+    }
   }
 
   let commentary = [];
@@ -250,6 +278,8 @@
 
     raceData = simulateRace(raceMonsters, raceDuration, serverRankings.length > 0 ? serverRankings : null);
     winner = raceData.winner;
+    runawayId    = raceData.outliers.runawayId;
+    stragglerIId = raceData.outliers.stragglerI;
     startTime = Date.now() - elapsed;
     animateRace();
   });
@@ -343,19 +373,6 @@
       validationResult = { won: false };
       const raceWinner = raceState.winner || winner;
       winner = raceWinner;
-
-      const sortedMonsters = raceState.rankings?.length > 0
-        ? raceState.rankings.map(r => r.monster)
-        : raceMonsters;
-
-      addRaceToHistory({
-        monsters: sortedMonsters,
-        winner: raceWinner,
-        bet: null,
-        won: false,
-        payout: 0,
-        timestamp: Date.now(),
-      });
     }
 
     setTimeout(() => push('/results'), 3500);
