@@ -1,0 +1,1 @@
+node server/scripts/simulate.js --races 1000 --format json --output simulate-results.json
