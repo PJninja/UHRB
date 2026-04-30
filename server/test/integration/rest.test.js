@@ -49,7 +49,7 @@ function waitingRace(overrides = {}) {
 let app;
 
 beforeAll(async () => {
-  app = await buildApp({ logger: false, ws: false });
+  app = await buildApp({ logger: false, ws: false, rateLimit: false });
   await app.ready();
 });
 
@@ -95,6 +95,27 @@ describe('POST /api/session', () => {
     const b = await app.inject({ method: 'POST', url: '/api/session' });
     expect(a.json().sessionId).not.toBe(b.json().sessionId);
   });
+
+  it('returns the starting candy balance when no hint is given', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/session' });
+    expect(res.json().candyBalance).toBe(100);
+  });
+
+  it('uses a claimedBalance hint when provided', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/session',
+      payload: { claimedBalance: 750 },
+    });
+    expect(res.json().candyBalance).toBe(750);
+  });
+
+  it('caps claimedBalance at 1,000,000', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/session',
+      payload: { claimedBalance: 9999999 },
+    });
+    expect(res.json().candyBalance).toBe(1000000);
+  });
 });
 
 // ─── GET /api/session/:sessionId/validate ────────────────────────────────────
@@ -113,6 +134,17 @@ describe('GET /api/session/:sessionId/validate', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().valid).toBe(false);
     expect(res.json().session).toBeNull();
+  });
+
+  it('returns candyBalance for an active session', async () => {
+    const { sessionId } = (await app.inject({ method: 'POST', url: '/api/session' })).json();
+    const res = await app.inject({ method: 'GET', url: `/api/session/${sessionId}/validate` });
+    expect(res.json().candyBalance).toBe(100);
+  });
+
+  it('returns null candyBalance for an invalid session', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/session/session_unknown/validate' });
+    expect(res.json().candyBalance).toBeNull();
   });
 });
 
@@ -252,6 +284,27 @@ describe('POST /api/race/:raceId/bet', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('returns candyBalance after a successful bet', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 50 }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().candyBalance).toBe(50); // 100 starting − 50 bet
+  });
+
+  it('returns 402 when the bet exceeds the session balance', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 101 }), // starting balance is 100
+    });
+    expect(res.statusCode).toBe(402);
+  });
 });
 
 // ─── POST /api/race/:raceId/payout/validate ───────────────────────────────────
@@ -324,6 +377,64 @@ describe('POST /api/race/:raceId/payout/validate', () => {
     expect(res.json().payout).toBe(250); // floor(100 × 2.5)
   });
 
+  it('returns updated candyBalance after a winning payout', async () => {
+    getCurrentRace.mockReturnValue(waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    }));
+
+    const sessionId = await createSession();
+    isBettingAllowed.mockReturnValue(true);
+    getCurrentRace.mockReturnValueOnce(waitingRace());
+    await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/bet`,
+      payload: { sessionId, monsterId: MONSTER_A.id, amount: 50 },
+    });
+
+    getCurrentRace.mockReturnValue(waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    }));
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_A.id, amount: 50 } },
+    });
+    // balance after bet: 100 − 50 = 50; payout = floor(50 × 2.5) = 125; final = 50 + 125 = 175
+    expect(res.json().candyBalance).toBe(175);
+  });
+
+  it('returns unchanged candyBalance after a losing payout', async () => {
+    getCurrentRace.mockReturnValue(waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    }));
+
+    const sessionId = await createSession();
+    isBettingAllowed.mockReturnValue(true);
+    getCurrentRace.mockReturnValueOnce(waitingRace());
+    await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/bet`,
+      payload: { sessionId, monsterId: MONSTER_B.id, amount: 50 },
+    });
+
+    getCurrentRace.mockReturnValue(waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    }));
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_B.id, amount: 50 } },
+    });
+    // balance after bet: 100 − 50 = 50; payout = 0 (loss); final = 50 (above mercy floor)
+    expect(res.json().candyBalance).toBe(50);
+  });
+
   it('returns won=false with payout=0 when the session bet on the loser', async () => {
     getCurrentRace.mockReturnValue(waitingRace({
       state: 'finished',
@@ -354,5 +465,59 @@ describe('POST /api/race/:raceId/payout/validate', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().won).toBe(false);
     expect(res.json().payout).toBe(0);
+  });
+
+  it('does not credit balance a second time when payout is called twice (double-payout prevention)', async () => {
+    const finishedRace = waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    });
+
+    const sessionId = await createSession();
+    isBettingAllowed.mockReturnValue(true);
+    getCurrentRace.mockReturnValueOnce(waitingRace());
+    await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/bet`,
+      payload: { sessionId, monsterId: MONSTER_A.id, amount: 50 },
+    });
+
+    getCurrentRace.mockReturnValue(finishedRace);
+
+    const first = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_A.id, amount: 50 } },
+    });
+    const second = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_A.id, amount: 50 } },
+    });
+
+    // First call: balance 50 + payout 125 = 175
+    expect(first.json().candyBalance).toBe(175);
+    // Second call: bet was cleared — balance stays at 175
+    expect(second.json().candyBalance).toBe(175);
+  });
+
+  it('does not apply mercy floor when a player with no bet calls payout validate', async () => {
+    getCurrentRace.mockReturnValue(waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    }));
+
+    // Create a session with a low balance but place no bet
+    const sessionId = (await app.inject({
+      method: 'POST', url: '/api/session',
+      payload: { claimedBalance: 5 },
+    })).json().sessionId;
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId },
+    });
+
+    // Balance should stay at 5 — mercy floor must not fire for non-bettors
+    expect(res.json().candyBalance).toBe(5);
   });
 });

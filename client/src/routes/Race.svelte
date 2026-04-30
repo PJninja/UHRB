@@ -3,7 +3,7 @@
   import { push } from 'svelte-spa-router';
   import { get } from 'svelte/store';
   import { monsters } from '../lib/stores/monsters.js';
-  import { serverRaceState, currentBet, updateCandies, clearBet } from '../lib/stores/game.js';
+  import { serverRaceState, currentBet, syncBalanceFromPayout, clearBet } from '../lib/stores/game.js';
   import { sessionId } from '../lib/stores/session.js';
   import { addRaceToHistory } from '../lib/stores/history.js';
   import { simulateRace } from '../lib/utils/raceSimulation.js';
@@ -347,7 +347,7 @@
 
         if (validation.valid) {
           winner = validation.winner;
-          updateCandies(validation.payout);
+          syncBalanceFromPayout(validation.candyBalance);
 
           const sortedMonsters = validation.rankings
             ? validation.rankings.map(r => r.monster)

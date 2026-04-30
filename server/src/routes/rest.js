@@ -1,5 +1,5 @@
 // REST API routes
-import { createSession, validateSession, storeBet, getSession } from '../state/sessionManager.js';
+import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet } from '../state/sessionManager.js';
 import { getCurrentRace, isBettingAllowed, addBetToTotal, racePayload } from '../services/raceScheduler.js';
 import { validatePayout } from '../services/payoutValidator.js';
 
@@ -15,11 +15,13 @@ export async function registerRestRoutes(fastify) {
 
   // Create a new anonymous session
   fastify.post('/api/session', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const session = createSession();
+    const { claimedBalance } = request.body ?? {};
+    const session = createSession(claimedBalance);
 
     return {
       sessionId: session.sessionId,
       expiresAt: session.expiresAt,
+      candyBalance: session.candyBalance,
     };
   });
 
@@ -32,6 +34,7 @@ export async function registerRestRoutes(fastify) {
 
     return {
       valid: isValid,
+      candyBalance: isValid ? getBalance(sessionId) : null,
       session: session ? {
         id: session.id,
         connectedAt: session.connectedAt,
@@ -107,11 +110,18 @@ export async function registerRestRoutes(fastify) {
       });
     }
 
-    // Validate amount (basic validation - client manages balance)
+    // Validate amount
     if (amount < 1) {
       return reply.code(400).send({
         error: 'Bet amount must be at least 1',
       });
+    }
+
+    // Deduct bet from server-side balance
+    const deduction = deductBet(sessionId, amount);
+    if (!deduction.ok) {
+      const status = deduction.reason === 'insufficient_balance' ? 402 : 500;
+      return reply.code(status).send({ error: deduction.reason });
     }
 
     // Store bet
@@ -128,11 +138,8 @@ export async function registerRestRoutes(fastify) {
 
     return {
       success: true,
-      bet: {
-        raceId,
-        monsterId,
-        amount,
-      },
+      bet: { raceId, monsterId, amount },
+      candyBalance: deduction.candyBalance,
     };
   });
 
@@ -158,6 +165,13 @@ export async function registerRestRoutes(fastify) {
     // Validate payout
     const result = validatePayout(sessionId, bet);
 
+    let candyBalance = getBalance(sessionId);
+    if (result.valid && result.bet) {
+      // A real bet was resolved — credit and clear to prevent double-payout
+      candyBalance = creditPayout(sessionId, result.payout);
+      clearBet(sessionId);
+    }
+
     return {
       valid: result.valid,
       won: result.won,
@@ -167,6 +181,7 @@ export async function registerRestRoutes(fastify) {
       payout: result.payout,
       bet: result.bet,
       error: result.error,
+      candyBalance,
     };
   });
 }

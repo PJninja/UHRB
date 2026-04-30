@@ -78,10 +78,9 @@ export async function placeBet(monsterId, amount) {
   }));
 
   try {
-    // Sync to server
-    await apiBet(raceState.raceId, session, monsterId, amount);
+    const response = await apiBet(raceState.raceId, session, monsterId, amount);
+    setCandyBalance(response.candyBalance);
   } catch (error) {
-    // Rollback on error
     console.error('Server bet failed:', error);
     clearBet();
     throw error;
@@ -99,33 +98,19 @@ export function clearBet() {
 }
 
 /**
- * Update candies after race (handles win/loss)
- * @param {number} payout - Payout amount (0 if lost)
+ * Overwrite the local candy balance with the server-authoritative value.
+ * @param {number} balance
  */
-export function updateCandies(payout) {
-  gameState.update(state => {
-    let newCandies = state.candies;
+export function setCandyBalance(balance) {
+  gameState.update(s => ({ ...s, candies: balance }));
+}
 
-    if (state.currentBet) {
-      // Deduct bet
-      newCandies -= state.currentBet.amount;
-      // Add payout
-      newCandies += payout;
-    }
-
-    // Bankruptcy protection
-    const MERCY_CANDIES = 10;
-    if (newCandies <= 0) {
-      newCandies = MERCY_CANDIES;
-      console.log('Mercy candies! The void takes pity on you.');
-    }
-
-    return {
-      ...state,
-      candies: newCandies,
-      currentBet: null,
-    };
-  });
+/**
+ * Sync candy balance from a server payout response and clear the active bet.
+ * @param {number} serverBalance - Authoritative balance returned by the server
+ */
+export function syncBalanceFromPayout(serverBalance) {
+  gameState.update(s => ({ ...s, candies: serverBalance, currentBet: null }));
 }
 
 /**

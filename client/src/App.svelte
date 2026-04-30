@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import Router from 'svelte-spa-router';
   import { push } from 'svelte-spa-router';
   import Home from './routes/Home.svelte';
@@ -7,7 +8,7 @@
   import Race from './routes/Race.svelte';
   import Results from './routes/Results.svelte';
   import History from './routes/History.svelte';
-  import { raceState, updateServerRaceState } from './lib/stores/game.js';
+  import { raceState, updateServerRaceState, setCandyBalance, candies } from './lib/stores/game.js';
   import { sessionId } from './lib/stores/session.js';
   import { setMonsters } from './lib/stores/monsters.js';
   import { createSession, validateSession } from './lib/services/api.js';
@@ -32,9 +33,10 @@
       let session = $sessionId;
 
       if (!session) {
-        // Create new session
-        const response = await createSession();
+        // Create new session, carrying over any balance persisted in localStorage
+        const response = await createSession({ claimedBalance: get(candies) });
         sessionId.set(response.sessionId);
+        setCandyBalance(response.candyBalance);
         session = response.sessionId;
         console.log('[App] Created new session:', session);
       } else {
@@ -42,19 +44,23 @@
         try {
           const validation = await validateSession(session);
           if (!validation.valid) {
-            // Session expired, create new one
-            const response = await createSession();
+            // Session expired — create new one, carrying over persisted balance
+            const response = await createSession({ claimedBalance: get(candies) });
             sessionId.set(response.sessionId);
+            setCandyBalance(response.candyBalance);
             session = response.sessionId;
             console.log('[App] Session expired, created new one:', session);
           } else {
+            // Sync authoritative balance from server
+            setCandyBalance(validation.candyBalance);
             console.log('[App] Resumed session:', session);
           }
         } catch (error) {
           console.error('[App] Session validation failed:', error);
-          // Create new session on error
-          const response = await createSession();
+          // Create new session on error, carrying over persisted balance
+          const response = await createSession({ claimedBalance: get(candies) });
           sessionId.set(response.sessionId);
+          setCandyBalance(response.candyBalance);
           session = response.sessionId;
         }
       }

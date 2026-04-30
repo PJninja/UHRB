@@ -3,11 +3,14 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 /**
  * Create a new anonymous session
- * @returns {Promise<{sessionId: string, expiresAt: number}>}
+ * @param {{ claimedBalance?: number }} [opts]
+ * @returns {Promise<{sessionId: string, expiresAt: number, candyBalance: number}>}
  */
-export async function createSession() {
+export async function createSession(opts = {}) {
   const response = await fetch(`${API_BASE}/session`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
   });
 
   if (!response.ok) {

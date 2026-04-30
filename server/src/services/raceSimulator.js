@@ -144,7 +144,9 @@ export function calculateOdds(monsters) {
       finalOdds = Math.min(200, finalOdds * LEGENDARY_RIVAL_BOOST);
     }
 
-    odds[monster.id] = Math.round(finalOdds * 100) / 100;
+    finalOdds = Math.round(finalOdds * 2) / 2;
+    finalOdds = Math.max(1.5, finalOdds);
+    odds[monster.id] = finalOdds;
   });
 
   return odds;

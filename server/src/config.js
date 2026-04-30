@@ -17,6 +17,11 @@ export const config = {
   // Session
   sessionTtlMs: parseInt(process.env.SESSION_TTL_MS || '86400000'), // 24 hours
 
+  // Candy balance
+  startingBalance: 100,
+  mercyBalance: 10,
+  maxClaimedBalance: 1000000,
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',
 

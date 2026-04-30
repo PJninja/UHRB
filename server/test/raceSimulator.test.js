@@ -28,7 +28,7 @@ describe('calculateOdds', () => {
     expect(odds).toHaveProperty('b');
   });
 
-  it('all odds are within [1.1, 200.0]', () => {
+  it('all odds are within [1.5, 200.0] and are multiples of 0.5', () => {
     const monsters = [
       makeMonster({ id: 'a', traits: { speed: 10, endurance: 10, strength: 10, luck: 10, madness: 1, value: 1 } }),
       makeMonster({ id: 'b', traits: { speed: 1, endurance: 1, strength: 1, luck: 1, madness: 1, value: 100 } }),
@@ -36,8 +36,9 @@ describe('calculateOdds', () => {
     ];
     const odds = calculateOdds(monsters);
     Object.values(odds).forEach(o => {
-      expect(o).toBeGreaterThanOrEqual(1.1);
+      expect(o).toBeGreaterThanOrEqual(1.5);
       expect(o).toBeLessThanOrEqual(200);
+      expect(o % 0.5).toBe(0);
     });
   });
 
@@ -84,12 +85,46 @@ describe('calculateOdds', () => {
     expect(odds['b']).toBe(odds['c']);
   });
 
-  it('rounds to 2 decimal places', () => {
+  it('snaps to 0.5 steps', () => {
     const monsters = [makeMonster({ id: 'a' }), makeMonster({ id: 'b' })];
     const odds = calculateOdds(monsters);
     Object.values(odds).forEach(o => {
-      expect(o).toBe(Math.round(o * 100) / 100);
+      expect(o % 0.5).toBe(0);
     });
+  });
+
+  it('snaps to 0.5 steps across varied stat and value combinations', () => {
+    const monsters = [
+      makeMonster({ id: 'a', traits: { speed: 10, endurance: 2, strength: 7, luck: 1, madness: 3, value: 15 } }),
+      makeMonster({ id: 'b', traits: { speed: 3, endurance: 8, strength: 1, luck: 9, madness: 6, value: 72 } }),
+      makeMonster({ id: 'c', traits: { speed: 5, endurance: 5, strength: 5, luck: 5, madness: 5, value: 50 } }),
+      makeMonster({ id: 'd', traits: { speed: 1, endurance: 1, strength: 1, luck: 1, madness: 1, value: 99 } }),
+    ];
+    const odds = calculateOdds(monsters);
+    Object.values(odds).forEach(o => {
+      expect(o % 0.5).toBe(0);
+    });
+  });
+
+  it('never produces odds below 1.5× even for the highest-favored monster', () => {
+    // Two equal-stat, maximum-value monsters — raw blended odds would be ~1.18×
+    const monsters = [
+      makeMonster({ id: 'a', traits: { speed: 5, endurance: 5, strength: 5, luck: 5, madness: 5, value: 100 } }),
+      makeMonster({ id: 'b', traits: { speed: 5, endurance: 5, strength: 5, luck: 5, madness: 5, value: 100 } }),
+    ];
+    const odds = calculateOdds(monsters);
+    Object.values(odds).forEach(o => {
+      expect(o).toBeGreaterThanOrEqual(1.5);
+    });
+  });
+
+  it('legendary lands at exactly 1.5×', () => {
+    const monsters = [
+      makeMonster({ id: 'legend', isLegendary: true }),
+      makeMonster({ id: 'normal' }),
+    ];
+    const odds = calculateOdds(monsters);
+    expect(odds['legend']).toBe(1.5);
   });
 });
 
