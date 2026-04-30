@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { candies, currentBet, serverRaceState } from '../stores/game.js';
   import { placeBet, clearBet } from '../stores/game.js';
+  import { formatOdds } from '../utils/odds.js';
 
   const dispatch = createEventDispatcher();
 
@@ -77,7 +78,7 @@
         <div class="odds-display">
           <div class="odds-row">
             <span class="label">Odds:</span>
-            <span class="value">{selectedOdds}x</span>
+            <span class="value">{formatOdds(selectedOdds)}</span>
           </div>
           <div class="odds-row">
             <span class="label">Potential Payout:</span>

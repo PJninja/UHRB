@@ -3,7 +3,7 @@
   import { push } from 'svelte-spa-router';
   import { get } from 'svelte/store';
   import { monsters } from '../lib/stores/monsters.js';
-  import { serverRaceState, currentBet, updateCandies } from '../lib/stores/game.js';
+  import { serverRaceState, currentBet, updateCandies, clearBet } from '../lib/stores/game.js';
   import { sessionId } from '../lib/stores/session.js';
   import { addRaceToHistory } from '../lib/stores/history.js';
   import { simulateRace } from '../lib/utils/raceSimulation.js';
@@ -337,8 +337,9 @@
     const raceState = get(serverRaceState);
     const session = get(sessionId);
     const bet = get(currentBet);
+    const isBetForThisRace = bet && bet.raceId === raceState.raceId;
 
-    if (bet) {
+    if (isBetForThisRace) {
       try {
         const validation = await validatePayout(raceState.raceId, session, bet);
         isValidating = false;
@@ -369,6 +370,7 @@
         payoutError = 'Could not validate payout. Check your connection.';
       }
     } else {
+      if (bet) clearBet(); // stale bet from a previous race — clear it without deducting
       isValidating = false;
       validationResult = { won: false };
       const raceWinner = raceState.winner || winner;

@@ -2,6 +2,7 @@
   import { push } from 'svelte-spa-router';
   import { serverRaceState, currentBet } from '../stores/game.js';
   import { history } from '../stores/history.js';
+  import { formatOdds } from '../utils/odds.js';
 
   export let monster;
 
@@ -56,7 +57,7 @@
       {#if odds}
         <div class="result-line">
           <span class="label">Odds</span>
-          <span class="value">{odds}×</span>
+          <span class="value">{formatOdds(odds)}</span>
         </div>
       {/if}
     </div>
@@ -65,7 +66,7 @@
     <div class="context-state default">
       <div class="odds-label">Current Odds</div>
       {#if odds}
-        <div class="odds-value">{odds}<span class="odds-unit">×</span></div>
+        <div class="odds-value">{formatOdds(odds)}</div>
       {:else}
         <div class="odds-value">—</div>
       {/if}
@@ -201,11 +202,6 @@
     color: var(--candy-color);
     line-height: 1;
     margin: 0.25rem 0;
-  }
-
-  .odds-unit {
-    font-size: 1.5rem;
-    opacity: 0.7;
   }
 
   .odds-hint {
