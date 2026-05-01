@@ -22,7 +22,13 @@ export function sanitizeMonster(monster, isChampion = false) {
   // High favor = crowd expects them to win = lower payout. Low favor = underdog = higher payout.
   const audienceFavor = Math.min(5, Math.ceil(value / 20));
   const { description, blurb, height, weight, features, ...rest } = monster;
-  return { ...rest, traits: visibleTraits, isReturningChampion: isChampion, audienceFavor };
+  return {
+    ...rest,
+    traits: visibleTraits,
+    statVisibility: monster.statVisibility,
+    isReturningChampion: isChampion,
+    audienceFavor,
+  };
 }
 
 export function racePayload(race) {

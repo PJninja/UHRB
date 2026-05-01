@@ -84,6 +84,30 @@ export function generateMonster() {
     value:     randomInt(1, 100),  // hidden — affects payout only, never sent to client
   };
 
+  // Determine which stats are visible (1–4 hidden)
+  // Distribution: heavily weighted toward 2 hidden
+  const visibilityRoll = random();
+  let hiddenCount;
+  if (visibilityRoll < 0.05) {
+    hiddenCount = 4;  // 5% - all hidden
+  } else if (visibilityRoll < 0.30) {
+    hiddenCount = 3;  // 25% - three hidden
+  } else if (visibilityRoll < 0.80) {
+    hiddenCount = 2;  // 50% - two hidden (most common)
+  } else {
+    hiddenCount = 1;  // 20% - one hidden
+  }
+
+  // Randomly select which stats are hidden
+  const statKeys = ['speed', 'endurance', 'madness', 'strength'];
+  const shuffledStats = shuffle([...statKeys]);
+  const hiddenStats = shuffledStats.slice(0, hiddenCount);
+
+  const statVisibility = {};
+  statKeys.forEach(stat => {
+    statVisibility[stat] = !hiddenStats.includes(stat);
+  });
+
   return {
     id:          generateUUID(),
     name,
@@ -99,6 +123,7 @@ export function generateMonster() {
     temperament: temperament.text,
     style,
     traits,
+    statVisibility,
   };
 }
 
@@ -124,6 +149,7 @@ export function generateRaceMonsters(count = null, previousMonsters = null, prev
         ...previousWinner.traits,
         value: Math.min(100, previousWinner.traits.value + CHAMPION_FAVOR_BOOST),
       },
+      statVisibility: previousWinner.statVisibility,  // Preserve visibility
     };
     monsters = [boostedChampion];
   } else {

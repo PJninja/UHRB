@@ -6,6 +6,7 @@
   import BettingContext from '../lib/components/BettingContext.svelte';
   import RichText from '../lib/components/RichText.svelte';
   import RaceTimer from '../lib/components/RaceTimer.svelte';
+  import StatBar from '../lib/components/StatBar.svelte';
 
   export let params = {};
 
@@ -24,29 +25,6 @@
       .finally(() => { bioLoading = false; });
   }
 
-  // SCP-style Field Classification — two alchemical symbols encoding power tier and dominant stat.
-  // Players discover the encoding empirically by cross-referencing bio entries with race outcomes.
-  // Power tier: classical four elements → quintessence → vitriol (low → high).
-  // Stat: aqua regia, aqua vitae, vinegar, sal ammoniac, oil of vitriol.
-  const POWER_RUNES = [
-    { min: 0,    rune: '🜃' },  // Earth
-    { min: 16,   rune: '🜄' },  // Water
-    { min: 21,   rune: '🜁' },  // Air
-    { min: 25.5, rune: '🜂' },  // Fire
-    { min: 31,   rune: '🜀' },  // Quintessence
-    { min: 38,   rune: '🜋' },  // Vitriol
-  ];
-
-  const STAT_RUNES = {
-    speed:     '🜇',  // Aqua Regia 2
-    endurance: '🜉',  // Aqua Vitae 2
-    strength:  '🜍',  // Red Vitriol
-    madness:   '🜊',  // Vinegar
-    luck:      '🜑',  // Sal Ammoniac
-  };
-
-  const STAT_PRIORITY = ['speed', 'endurance', 'strength', 'madness', 'luck'];
-
   const FAVOR_TIERS = {
     1: { label: 'Despised',   desc: 'The crowd has little faith. Those who bet here may be rewarded.' },
     2: { label: 'Overlooked', desc: 'Few expect greatness here. There may be value in that doubt.' },
@@ -55,31 +33,18 @@
     5: { label: 'Beloved',    desc: 'The crowd adores this horror. Expectations are high — and costly.' },
   };
 
+  // Color mapping for each stat (matching RichText colors for thematic consistency)
+  const STAT_COLORS = {
+    speed:     'var(--candy-color)',      // glow → tarnished gold
+    endurance: '#6b5a44',                 // ancient → earth tone
+    madness:   'var(--eldritch-purple)',  // madness → purple
+    strength:  'var(--eldritch-red)',     // blood → red
+  };
+
   $: favorColor = !monster ? '#6b5a44'
     : monster.audienceFavor <= 2 ? '#4a5fa5'
     : monster.audienceFavor === 3 ? '#6b5a44'
     : 'var(--candy-color)';
-
-  $: commissionField = (() => {
-    if (!monster?.traits) return null;
-    const { speed, endurance, strength, luck } = monster.traits;
-    const score = (speed * 2.5) + (endurance * 1.5) + (strength * 1.0) + (luck * 1.5);
-
-    let powerRune = POWER_RUNES[0].rune;
-    for (let i = POWER_RUNES.length - 1; i >= 0; i--) {
-      if (score >= POWER_RUNES[i].min) { powerRune = POWER_RUNES[i].rune; break; }
-    }
-
-    const dominant = STAT_PRIORITY.reduce((best, stat) =>
-      (monster.traits[stat] ?? 0) > (monster.traits[best] ?? 0) ? stat : best
-    );
-
-    return {
-      powerRune,
-      statRune: STAT_RUNES[dominant],
-      classLevel: monster.bodyTypeLetter ?? '—',
-    };
-  })();
 </script>
 
 <div class="bio-page">
@@ -194,7 +159,7 @@
 
       </div>
 
-      <!-- Aside: betting context, audience favor, field classification -->
+      <!-- Aside: betting context, audience favor, physical manifestation -->
       <aside class="bio-aside">
         <RaceTimer />
         <BettingContext {monster} />
@@ -217,14 +182,35 @@
           </div>
         {/if}
 
-        {#if commissionField}
-          <div class="field-classification card">
-            <h3 class="aside-heading">Field Classification</h3>
-            <div class="field-runes">
-              <span class="field-rune">{commissionField.powerRune}</span>
-              <span class="field-rune">{commissionField.statRune}</span>
+        {#if monster.statVisibility && monster.traits}
+          <div class="stats-card card">
+            <h3 class="aside-heading">Physical Manifestation</h3>
+            <div class="stats-grid">
+              <StatBar
+                label="Speed"
+                value={monster.traits.speed}
+                visible={monster.statVisibility.speed}
+                color={STAT_COLORS.speed}
+              />
+              <StatBar
+                label="Endurance"
+                value={monster.traits.endurance}
+                visible={monster.statVisibility.endurance}
+                color={STAT_COLORS.endurance}
+              />
+              <StatBar
+                label="Madness"
+                value={monster.traits.madness}
+                visible={monster.statVisibility.madness}
+                color={STAT_COLORS.madness}
+              />
+              <StatBar
+                label="Strength"
+                value={monster.traits.strength}
+                visible={monster.statVisibility.strength}
+                color={STAT_COLORS.strength}
+              />
             </div>
-            <div class="field-class-level">Class Level &nbsp;{commissionField.classLevel}</div>
           </div>
         {/if}
       </aside>
@@ -492,34 +478,16 @@
     opacity: 0.8;
   }
 
-  /* ── Field Classification ── */
-  .field-classification {
-    text-align: center;
-    padding: 1.25rem 1rem;
+  /* ── Stats card ── */
+  .stats-card {
+    padding: 1.25rem;
     margin-top: 1rem;
   }
 
-  .field-runes {
+  .stats-grid {
     display: flex;
-    justify-content: center;
-    gap: 2.5rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .field-rune {
-    font-family: 'Noto Sans Symbols 2', serif;
-    font-size: 2.5rem;
-    color: var(--text-primary);
-    line-height: 1;
-  }
-
-  .field-class-level {
-    font-family: 'Cinzel', serif;
-    font-size: 0.7rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    opacity: 0.7;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 
   /* ── Bio loading ── */

@@ -156,6 +156,31 @@ describe('GET /api/race/current', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(RACE_ID);
   });
+
+  it('returns race with statVisibility for each monster', async () => {
+    // Add statVisibility to test monsters
+    const monstersWithVisibility = [
+      { ...MONSTER_A, statVisibility: { speed: true, endurance: false, madness: true, strength: false } },
+      { ...MONSTER_B, statVisibility: { speed: false, endurance: true, madness: false, strength: true } },
+    ];
+    getCurrentRace.mockReturnValue(waitingRace({ monsters: monstersWithVisibility }));
+    
+    const res = await app.inject({ method: 'GET', url: '/api/race/current' });
+    expect(res.statusCode).toBe(200);
+    
+    const race = res.json();
+    expect(race.monsters).toBeDefined();
+    expect(race.monsters.length).toBe(2);
+    
+    const monster = race.monsters[0];
+    expect(monster.statVisibility).toBeDefined();
+    expect(Object.keys(monster.statVisibility).sort()).toEqual(['endurance', 'madness', 'speed', 'strength']);
+    
+    // Verify all values are booleans
+    Object.values(monster.statVisibility).forEach(visible => {
+      expect(typeof visible).toBe('boolean');
+    });
+  });
 });
 
 // ─── GET /api/monster/:id ─────────────────────────────────────────────────────

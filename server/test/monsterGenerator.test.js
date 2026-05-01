@@ -291,3 +291,72 @@ describe('sanitizeMonster', () => {
     });
   });
 });
+
+// ─── Stat Visibility ──────────────────────────────────────────────────────────
+
+describe('stat visibility generation', () => {
+  beforeEach(() => setSeed('test-seed'));
+  afterEach(() => resetSeed());
+
+  it('generates statVisibility with 1-4 hidden stats', () => {
+    const monster = generateMonster();
+    expect(monster.statVisibility).toBeDefined();
+    expect(Object.keys(monster.statVisibility).sort()).toEqual(['endurance', 'madness', 'speed', 'strength']);
+    
+    const visibleCount = Object.values(monster.statVisibility).filter(v => v).length;
+    expect(visibleCount).toBeGreaterThanOrEqual(0);
+    expect(visibleCount).toBeLessThanOrEqual(3);  // 1–4 hidden = 0–3 visible
+  });
+
+  it('always has at least 1 hidden stat', () => {
+    for (let i = 0; i < 50; i++) {
+      setSeed(`statvis-${i}`);
+      const monster = generateMonster();
+      const visibleCount = Object.values(monster.statVisibility).filter(v => v).length;
+      expect(visibleCount).toBeLessThan(4);  // Never all 4 visible
+    }
+  });
+
+  it('stat visibility follows distribution curve', () => {
+    const hiddenCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    const iterations = 1000;
+    
+    for (let i = 0; i < iterations; i++) {
+      setSeed(`dist-${i}`);
+      const monster = generateMonster();
+      const hiddenCount = Object.values(monster.statVisibility).filter(v => !v).length;
+      hiddenCounts[hiddenCount]++;
+    }
+    
+    // Check distribution is roughly correct (with 10% tolerance)
+    expect(hiddenCounts[1]).toBeGreaterThan(iterations * 0.10);  // ~20% ±10%
+    expect(hiddenCounts[1]).toBeLessThan(iterations * 0.30);
+    
+    expect(hiddenCounts[2]).toBeGreaterThan(iterations * 0.40);  // ~50% ±10%
+    expect(hiddenCounts[2]).toBeLessThan(iterations * 0.60);
+    
+    expect(hiddenCounts[3]).toBeGreaterThan(iterations * 0.15);  // ~25% ±10%
+    expect(hiddenCounts[3]).toBeLessThan(iterations * 0.35);
+    
+    expect(hiddenCounts[4]).toBeGreaterThan(0);                   // ~5% (at least some)
+    expect(hiddenCounts[4]).toBeLessThan(iterations * 0.15);
+  });
+
+  it('preserves statVisibility field in sanitizeMonster', () => {
+    const monster = generateMonster();
+    const sanitized = sanitizeMonster(monster, false);
+    expect(sanitized.statVisibility).toEqual(monster.statVisibility);
+  });
+
+  it('preserves statVisibility when champion returns', () => {
+    const original = generateMonster();
+    const originalVisibility = { speed: true, endurance: false, madness: false, strength: true };
+    original.statVisibility = originalVisibility;
+    
+    const monsters = generateRaceMonsters(4, null, original);
+    const champion = monsters.find(m => m.id === original.id);
+    
+    expect(champion).toBeDefined();
+    expect(champion.statVisibility).toEqual(originalVisibility);
+  });
+});
