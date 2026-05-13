@@ -35,10 +35,10 @@
 
   // Color mapping for each stat (matching RichText colors for thematic consistency)
   const STAT_COLORS = {
-    speed:     'var(--candy-color)',      // glow → tarnished gold
-    endurance: '#6b5a44',                 // ancient → earth tone
-    madness:   'var(--eldritch-purple)',  // madness → purple
-    strength:  'var(--eldritch-red)',     // blood → red
+    speed:     '#9b87c5',   // glow → eldritch purple pulse
+    endurance: '#6b5a44',   // ancient → earth tone
+    madness:   '#6ecfa0',   // madness → unsettling green
+    strength:  'var(--eldritch-red)', // blood → red
   };
 
   $: favorColor = !monster ? '#6b5a44'

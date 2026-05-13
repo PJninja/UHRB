@@ -87,6 +87,7 @@
           Past Races ({$history.length})
         </button>
       {/if}
+      <button class="about-btn" on:click={() => push('/about')}>About</button>
     </div>
 
     <RaceTimer />
@@ -167,6 +168,25 @@
   .history-btn:hover {
     border-color: var(--candy-color);
     color: var(--candy-color);
+  }
+
+  .about-btn {
+    margin-top: 0.5rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #6b5a8e);
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+  }
+
+  .about-btn:hover {
+    opacity: 1;
   }
 
   .main-content {

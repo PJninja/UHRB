@@ -8,6 +8,7 @@
   import Race from './routes/Race.svelte';
   import Results from './routes/Results.svelte';
   import History from './routes/History.svelte';
+  import About from './routes/About.svelte';
   import { raceState, updateServerRaceState, setCandyBalance, candies } from './lib/stores/game.js';
   import { sessionId } from './lib/stores/session.js';
   import { setMonsters } from './lib/stores/monsters.js';
@@ -21,6 +22,7 @@
     '/race': Race,
     '/results': Results,
     '/history': History,
+    '/about': About,
   };
 
   let initializationError = null;

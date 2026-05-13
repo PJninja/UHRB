@@ -9,7 +9,7 @@ function selectOutliers(performances) {
   let stragglerI = null;
 
   if (hasRunaway && performances.length >= 2) {
-    // Exclude last-place finisher — too far from targetFinal to transition smoothly
+    // Exclude last-place finisher — they are already the straggler
     const candidates = performances.filter((_, i) => i < performances.length - 1);
     runawayId = candidates[Math.floor(Math.random() * candidates.length)].id;
   }
@@ -25,6 +25,66 @@ function selectOutliers(performances) {
   }
 
   return { runawayId, stragglerI };
+}
+
+function selectArchetype() {
+  const r = Math.random();
+  if (r < 0.20) return 'wire-to-wire';    // winner leads from early on
+  if (r < 0.45) return 'late-surge';      // winner lurks then explodes late
+  if (r < 0.65) return 'comeback';        // winner starts behind, surges mid-race
+  if (r < 0.85) return 'pack-then-split'; // tight first half, natural split after
+  return 'chaos';                          // noise doubled, anything can lead
+}
+
+function selectFinishPattern() {
+  const r = Math.random();
+  if (r < 0.20) return 'close';    // all finish within ~2s — neck-and-neck
+  if (r < 0.70) return 'split';    // leaders close, rest trail by 2-6s
+  return 'blowout';                 // winner way ahead (3-6s), rest scattered
+}
+
+/**
+ * Get the time offset (in ms after the winner) for a given finishing position.
+ * @param {number} position — 1-indexed final position (1 = winner)
+ * @param {string} pattern — 'close' | 'split' | 'blowout'
+ * @returns {number} milliseconds offset
+ */
+function getFinishOffset(position, pattern) {
+  if (position === 1) return 0;
+
+  const behind = position - 1; // how many positions behind winner
+
+  // Offset ranges per position for each pattern [min, max] in ms
+  const ranges = {
+    close: [
+      [0, 0],         // 1st
+      [200, 600],     // 2nd
+      [400, 1000],    // 3rd
+      [600, 1400],    // 4th
+      [800, 1700],    // 5th
+      [1000, 2000],   // 6th
+    ],
+    split: [
+      [0, 0],         // 1st
+      [200, 800],     // 2nd  (close to winner)
+      [1500, 3000],   // 3rd  (big gap)
+      [2500, 4000],   // 4th
+      [3500, 5000],   // 5th
+      [4000, 6000],   // 6th
+    ],
+    blowout: [
+      [0, 0],         // 1st
+      [2500, 4500],   // 2nd  (way behind)
+      [3500, 5000],   // 3rd
+      [4200, 5500],   // 4th
+      [4800, 6000],   // 5th
+      [5000, 6000],   // 6th
+    ],
+  };
+
+  const idx = Math.min(behind, ranges[pattern].length - 1);
+  const [min, max] = ranges[pattern][idx];
+  return min + Math.random() * (max - min);
 }
 
 /**
@@ -48,7 +108,12 @@ function calculatePerformance(monster) {
 }
 
 /**
- * Simulate a race and generate frame-by-frame progress
+ * Simulate a race and generate frame-by-frame progress.
+ *
+ * Every monster always moves forward and crosses the finish line (100%).
+ * The difference is *when* they cross: winners cross at `duration`, losers
+ * cross later based on a per-race finish pattern (close / split / blowout).
+ *
  * @param {object[]} monsters - Array of racing monsters
  * @param {number} duration - Race duration in milliseconds (default 8000)
  * @param {object[]|null} serverRankings - Rankings from the server ({ position, monster }[]).
@@ -59,18 +124,12 @@ function calculatePerformance(monster) {
 export function simulateRace(monsters, duration = 8000, serverRankings = null) {
   let performances;
 
-  // Finishing spread: each rank behind the winner is 3% further from the line.
-  // Winner = 100%, 2nd = 97%, …, 6th = 85%. Tight enough that all monsters
-  // are still visibly running in the home stretch, not frozen waiting for the winner.
-  const FINISH_SPREAD = 0.03;
-
   if (serverRankings && serverRankings.length > 0) {
     const localById = Object.fromEntries(monsters.map(m => [m.id, m]));
 
     performances = serverRankings.map(r => ({
       id: r.monster.id,
       monster: localById[r.monster.id] ?? r.monster,
-      normalizedPerf: 1.0 - (r.position - 1) * FINISH_SPREAD,
       finalPosition: r.position,
     }));
 
@@ -85,58 +144,61 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     perfs.sort((a, b) => b.performance - a.performance);
     perfs.forEach((p, i) => {
       p.finalPosition = i + 1;
-      p.normalizedPerf = 1.0 - i * FINISH_SPREAD;
     });
     performances = perfs;
   }
 
-  // Generate animation frames (60 FPS)
+  // Select finish pattern and assign time offsets
+  const finishPattern = selectFinishPattern();
   const fps = 60;
-  const frameCount = Math.floor((duration / 1000) * fps);
-  const frames = [];
 
-  // Pre-compute easing table once — avoids calling easeInOut() inside the inner loop
-  // (up to 1,800 calls per monster at 30s × 60fps).
-  const easeTable = new Float64Array(frameCount + 1);
-  for (let i = 0; i <= frameCount; i++) easeTable[i] = easeInOut(i / frameCount);
+  performances.forEach(perf => {
+    perf.finishOffset = getFinishOffset(perf.finalPosition, finishPattern);
+    perf.finishTime = duration + perf.finishOffset;
+  });
 
-  // Pre-compute position curves for each monster.
-  //
-  // Two-phase strategy:
-  //   Phase 1 (0 → DIVERGE_PHASE): all monsters run freely, each normalised so they
-  //     would all finish at 100 — no outcome bias, any monster can lead at any point.
-  //   Phase 2 (DIVERGE_PHASE → 1): each monster interpolates forward from wherever
-  //     they actually are at the diverge frame to their authoritative finish position.
-  //     Because targetFinal (85–100%) is always ≥ the typical free position at diverge
-  //     (~79%), this always moves forward — no freezing.
-  const DIVERGE_PHASE         = 0.68;
-  const OUTLIER_DIVERGE_PHASE = 0.55; // outliers blend back earlier, giving more time to return
-  const RUNAWAY_SPEED_BIAS    = 0.55; // added to speedBias for dramatic forward surge
-  const RUNAWAY_NOISE_MULT    = 0.40; // tightens noise so the surge looks deliberate
-  const STRAGGLER_SPEED_BIAS  = 0.55; // subtracted from speedBias to drag the walk backward
-  const STRAGGLER_NOISE_MULT  = 0.45;
+  const maxFinishTime = Math.max(...performances.map(p => p.finishTime));
+  const totalFrames = Math.ceil((maxFinishTime / 1000) * fps);
 
-  const defaultDivergeFrame = Math.floor(DIVERGE_PHASE * frameCount);
-  const outliers = selectOutliers(performances);
+  // Pre-compute easing table for the full extended duration
+  const easeTable = new Float64Array(totalFrames + 1);
+  for (let i = 0; i <= totalFrames; i++) {
+    easeTable[i] = easeInOut(i / totalFrames);
+  }
 
+  const outliers  = selectOutliers(performances);
+  const archetype = selectArchetype();
+
+  // Generate raw velocity-based walks and then normalize so each monster
+  // reaches exactly 100% at its personal finishTime.
   const positionCurves = {};
   const velocityCurves = {};
+  const finishFrames = {};
+
   performances.forEach(perf => {
     const isRunaway   = perf.id === outliers.runawayId;
     const isStraggler = perf.id === outliers.stragglerI;
+    const isWinner    = perf.finalPosition === 1;
+    const isSecond    = perf.finalPosition === 2;
 
-    const divergeFrame  = (isRunaway || isStraggler)
-      ? Math.floor(OUTLIER_DIVERGE_PHASE * frameCount)
-      : defaultDivergeFrame;
-    const easeAtDiverge = easeTable[divergeFrame];
-    const easeRemaining = easeTable[frameCount] - easeAtDiverge;
+    const finishFrame = Math.ceil((perf.finishTime / 1000) * fps);
+    finishFrames[perf.id] = finishFrame;
 
-    const { normalizedPerf } = perf;
-    const { speed, endurance, strength } = perf.monster.traits;
+    const { speed, endurance, strength, madness } = perf.monster.traits;
 
-    let speedBias   = ((speed     - 1) / 9) * 0.25;
-    let noiseScale  = 0.20 * (1 - ((endurance - 1) / 9) * 0.65);
+    let speedBias  = ((speed     - 1) / 9) * 0.75;
+    let noiseScale = 0.20 * (1 - ((endurance - 1) / 9) * 0.65);
+
+    // Madness shapes how smooth vs erratic the trajectory looks
+    const madnessMult = 0.7 + ((madness - 1) / 9) * 0.7; // range 0.70 → 1.40
+    noiseScale *= madnessMult;
+
     const maxVelocity = 1.5 + ((strength - 1) / 9) * 1.5;
+
+    const RUNAWAY_SPEED_BIAS   = 0.80;
+    const RUNAWAY_NOISE_MULT   = 0.40;
+    const STRAGGLER_SPEED_BIAS = 0.80;
+    const STRAGGLER_NOISE_MULT = 0.45;
 
     if (isRunaway) {
       speedBias  += RUNAWAY_SPEED_BIAS;
@@ -144,61 +206,92 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     } else if (isStraggler) {
       speedBias  -= STRAGGLER_SPEED_BIAS;
       noiseScale *= STRAGGLER_NOISE_MULT;
+    } else {
+      if (archetype === 'wire-to-wire' && isWinner) {
+        speedBias  += 0.35;
+        noiseScale *= 0.80;
+      } else if (archetype === 'chaos') {
+        noiseScale *= 2.0;
+        if (isWinner) speedBias += 0.05;
+      }
     }
 
-    const raw = new Array(frameCount + 1);
-    const velocities = new Array(frameCount + 1);
+    // Archetype switch points (relative to finishFrame for this monster)
+    const surgeFrame   = Math.floor(0.65 * finishFrame);
+    const switchFrame  = Math.floor(0.45 * finishFrame);
+    const packEndFrame = Math.floor(0.50 * finishFrame);
+
+    const raw = new Array(totalFrames + 1);
+    const velocities = new Array(totalFrames + 1);
     raw[0] = 0;
     velocities[0] = 1.0;
     let velocityMult = 1.0;
 
-    for (let i = 1; i <= frameCount; i++) {
+    for (let i = 1; i <= totalFrames; i++) {
       const baseStep = (easeTable[i] - easeTable[i - 1]) * 100;
-      velocityMult += (Math.random() - (0.5 - speedBias)) * noiseScale;
+
+      let frameBiasAdd   = 0;
+      let frameNoiseMult = 1.0;
+
+      // Archetype modifiers apply for the full duration (not just a diverge phase)
+      if (!isRunaway && !isStraggler) {
+        if (archetype === 'late-surge') {
+          if (isWinner && i >= surgeFrame)  { frameBiasAdd = +0.50; frameNoiseMult = 0.70; }
+          else if (isWinner)                { frameBiasAdd = +0.05; frameNoiseMult = 0.90; }
+          else if (isSecond && i >= surgeFrame) { frameBiasAdd = -0.05; }
+        } else if (archetype === 'comeback') {
+          if (isWinner && i < switchFrame)  { frameBiasAdd = -0.25; frameNoiseMult = 1.10; }
+          else if (isWinner)                { frameBiasAdd = +0.50; frameNoiseMult = 0.80; }
+          else if (isSecond && i >= switchFrame) { frameBiasAdd = -0.10; }
+        } else if (archetype === 'pack-then-split') {
+          if (i < packEndFrame) frameNoiseMult = 0.35;
+        }
+      }
+
+      velocityMult += (Math.random() - (0.5 - speedBias - frameBiasAdd)) * (noiseScale * frameNoiseMult);
       velocityMult = Math.max(0.35, Math.min(maxVelocity, velocityMult));
       raw[i] = raw[i - 1] + baseStep * velocityMult;
       velocities[i] = velocityMult;
     }
 
-    const rawFinal = raw[frameCount];
-    const targetFinal = normalizedPerf * 100; // e.g. winner=100, 2nd=97, last≈85
+    // Normalize so the monster reaches exactly 100% at its finishFrame.
+    // After that, clamp to 100% so it stays at the finish line.
+    const rawAtFinish = Math.max(raw[finishFrame], 0.001); // safeguard
+    const scale = 100 / rawAtFinish;
 
-    // Phase 1: free curve — all normalised to end at 100 so order is unpredictable.
-    const positionCurve = new Array(frameCount + 1);
-    for (let i = 0; i <= divergeFrame; i++) {
-      positionCurve[i] = (raw[i] / rawFinal) * 100;
-    }
-
-    // Phase 2: interpolate from the diverge position to targetFinal.
-    // Non-outliers: monotonic clamp prevents backward motion (targetFinal always ≥ freeAtDiverge).
-    // Outliers: clamp removed — runaways must slide back from ~120+ to their targetFinal;
-    //           stragglers always move forward so it's moot, but consistency is cleaner.
-    const freeAtDiverge = positionCurve[divergeFrame];
-    for (let i = divergeFrame + 1; i <= frameCount; i++) {
-      const t2 = (easeTable[i] - easeAtDiverge) / easeRemaining; // 0 → 1
-      const target = freeAtDiverge + t2 * (targetFinal - freeAtDiverge);
-      positionCurve[i] = (isRunaway || isStraggler)
-        ? target
-        : Math.max(positionCurve[i - 1], target);
+    const positionCurve = new Array(totalFrames + 1);
+    for (let i = 0; i <= totalFrames; i++) {
+      if (i <= finishFrame) {
+        positionCurve[i] = raw[i] * scale;
+      } else {
+        positionCurve[i] = 100;
+      }
     }
 
     positionCurves[perf.id] = positionCurve;
     velocityCurves[perf.id] = velocities;
   });
 
-  for (let frameIndex = 0; frameIndex <= frameCount; frameIndex++) {
+  // Build frames
+  const frames = [];
+  for (let frameIndex = 0; frameIndex <= totalFrames; frameIndex++) {
     const frameData = {};
+    const timestamp = (frameIndex / fps) * 1000;
+
     performances.forEach(perf => {
+      const finishFrame = finishFrames[perf.id];
+      const position = positionCurves[perf.id][frameIndex];
+      const finished = frameIndex >= finishFrame;
+
       frameData[perf.id] = {
-        position: positionCurves[perf.id][frameIndex],
+        position,
         velocityMult: velocityCurves[perf.id][frameIndex],
+        finished,
         monster: perf.monster,
       };
     });
-    frames.push({
-      timestamp: (frameIndex / fps) * 1000,
-      positions: frameData,
-    });
+
+    frames.push({ timestamp, positions: frameData });
   }
 
   // Return race results
@@ -210,7 +303,10 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     })),
     frames,
     duration,
+    visualDuration: maxFinishTime,
+    finishPattern,
     outliers,
+    archetype,
   };
 }
 
@@ -218,4 +314,3 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
 function easeInOut(t) {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
-

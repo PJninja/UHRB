@@ -28,6 +28,7 @@
   let startTime = null;
   let positions = {};
   let raceFinished = false;
+  let winnerCrossed = false;  // true when winner hits the finish line (freezes ranks, changes label)
   let raceMonsters = [];  // snapshot of monsters at race start — insulates animation from store updates
   let winner = null;
   let isValidating = false;
@@ -55,6 +56,11 @@
   let stragglerIId = null;
   let outlierRunawayFired = false;
   let outlierStragglerFired = false;
+  let raceArchetype = null;
+
+  // Late-finisher commentary tracking
+  let announcedFinishers = new Set();
+  let winnerFinishedAt = 0;
 
   function buildCommentary(monsterList) {
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -120,6 +126,21 @@
     });
 
     const pool = [...generic, ...specific];
+
+    if (raceArchetype === 'wire-to-wire') {
+      pool.push('One creature has decided this race is already over. It may be right.');
+      pool.push('The others race for second. The front has already been claimed.');
+    } else if (raceArchetype === 'late-surge') {
+      pool.push('Something is coiling itself near the back. Waiting. Patient as a debt.');
+      pool.push('The pack believes this is a simple race. They will be corrected.');
+    } else if (raceArchetype === 'comeback') {
+      pool.push('Last place is only a position. It does not have to be a destiny.');
+      pool.push('Something behind them has remembered what it is capable of.');
+    } else if (raceArchetype === 'chaos') {
+      pool.push('No predictions are valid. The officials have surrendered their clipboards.');
+      pool.push('The race has opinions of its own today.');
+    }
+
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -140,7 +161,7 @@
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     const sorted = raceMonsters
-      .map(m => ({ monster: m, position: positions[m.id]?.position ?? 0, velocityMult: positions[m.id]?.velocityMult ?? 1.0 }))
+      .map(m => ({ monster: m, position: positions[m.id]?.position ?? 0, velocityMult: positions[m.id]?.velocityMult ?? 1.0, finished: positions[m.id]?.finished ?? false }))
       .sort((a, b) => b.position - a.position);
 
     if (sorted.length === 0) return;
@@ -242,6 +263,23 @@
         `${m.name} moves at a pace that suggests reconsideration of the entire enterprise.`,
       ]));
     }
+
+    // Late finisher commentary: monsters crossing well after the winner
+    const now = Date.now();
+    if (winnerFinishedAt > 0 && now - winnerFinishedAt > 2000) {
+      for (const { monster, finished } of sorted) {
+        if (finished && !announcedFinishers.has(monster.id) && monster.id !== winner?.id) {
+          announcedFinishers.add(monster.id);
+          injectEventLine(pick([
+            `And finally, ${monster.name} staggers across. Better late than erased.`,
+            `${monster.name} completes the journey. The finish line had begun to forget them.`,
+            `At last, ${monster.name} arrives. The void kept a place for them.`,
+            `${monster.name} crosses the line. The judges had already closed their books.`,
+          ]));
+          break; // Only announce one late finisher per event cycle
+        }
+      }
+    }
   }
 
   let commentary = [];
@@ -261,13 +299,6 @@
       glyphMap[m.id] = HORROR_GLYPHS[i % HORROR_GLYPHS.length];
     });
 
-    commentary = buildCommentary(raceMonsters);
-    commentaryLine = commentary[0];
-    commentaryInterval = setInterval(() => {
-      commentaryIdx = (commentaryIdx + 1) % commentary.length;
-      commentaryLine = commentary[commentaryIdx];
-    }, COMMENTARY_NORMAL_MS);
-
     const srs = get(serverRaceState);
     const serverRankings = srs.rankings;
     // Use the server's authoritative duration so both sides finish at the same time.
@@ -280,6 +311,16 @@
     winner = raceData.winner;
     runawayId    = raceData.outliers.runawayId;
     stragglerIId = raceData.outliers.stragglerI;
+    raceArchetype = raceData.archetype;
+
+    // Build commentary after archetype is known so archetype lines are included
+    commentary = buildCommentary(raceMonsters);
+    commentaryLine = commentary[0];
+    commentaryInterval = setInterval(() => {
+      commentaryIdx = (commentaryIdx + 1) % commentary.length;
+      commentaryLine = commentary[commentaryIdx];
+    }, COMMENTARY_NORMAL_MS);
+
     startTime = Date.now() - elapsed;
     animateRace();
   });
@@ -291,9 +332,19 @@
 
   function animateRace() {
     const elapsed = Date.now() - startTime;
-    const progress = Math.min(1, elapsed / raceData.duration);
-    const frameIndex = Math.floor(progress * (raceData.frames.length - 1));
+    const visualDuration = raceData.visualDuration ?? raceData.duration;
+    const progress = Math.min(1, elapsed / visualDuration);
+    const frameIndex = Math.min(
+      Math.floor(progress * (raceData.frames.length - 1)),
+      raceData.frames.length - 1
+    );
     positions = raceData.frames[frameIndex].positions;
+
+    // Track when winner crosses the line (reaches 100%)
+    if (winnerFinishedAt === 0 && positions[winner?.id]?.finished) {
+      winnerFinishedAt = Date.now();
+      winnerCrossed = true;
+    }
 
     // Intensity escalation
     raceProgress = progress;
@@ -302,8 +353,9 @@
 
     detectCommentaryEvents();
 
-    // Speed up commentary in final 25%
-    if (progress >= 0.75 && !commentaryFast) {
+    // Speed up commentary in final 25% of official duration
+    const officialProgress = elapsed / raceData.duration;
+    if (officialProgress >= 0.75 && !commentaryFast) {
       commentaryFast = true;
       clearInterval(commentaryInterval);
       commentaryInterval = setInterval(() => {
@@ -385,19 +437,28 @@
     id: monster.id,
     position: positions[monster.id]?.position ?? 0,
     velocityMult: positions[monster.id]?.velocityMult ?? 1.0,
+    finished: positions[monster.id]?.finished ?? false,
   }));
 
   // Live rank map: monster id → current race position (1 = leading)
+  // Freeze ranks once the winner crosses so late finishers don't cause rank shifts.
+  let frozenRanks = {};
   $: ranks = (() => {
+    if (winnerCrossed && Object.keys(frozenRanks).length > 0) {
+      return frozenRanks;
+    }
     const sorted = [...displayMonsters].sort((a, b) => b.position - a.position);
     const map = {};
     sorted.forEach(({ id }, i) => { map[id] = i + 1; });
+    if (winnerCrossed) {
+      frozenRanks = map;
+    }
     return map;
   })();
 
   // Neck-and-neck: top-2 monsters within 6% of each other
   $: neckAndNeck = (() => {
-    if (raceFinished) return new Set();
+    if (winnerCrossed) return new Set();
     const sorted = [...displayMonsters].sort((a, b) => b.position - a.position);
     if (sorted.length < 2 || sorted[0].position - sorted[1].position > NECK_AND_NECK_THRESHOLD) return new Set();
     return new Set([sorted[0].id, sorted[1].id]);
@@ -413,7 +474,7 @@
 
 <div class="race-page">
   <div class="header">
-    <div class="race-status-label">{raceFinished ? 'RACE COMPLETE' : 'RACE IN PROGRESS'}</div>
+    <div class="race-status-label">{winnerCrossed ? 'RACE COMPLETE' : 'RACE IN PROGRESS'}</div>
     <h1>The Race</h1>
     {#if $currentBet}
       {@const betMonster = raceMonsters.find(m => m.id === playerBetId)}
@@ -429,13 +490,14 @@
 
   <div class="race-track"
     style="--race-progress: {raceProgress.toFixed(3)}; --glyph-speed: {Math.round(800 - glyphStep * (450 / RACE_INTENSITY_STEPS))}ms">
-    {#each displayMonsters as { id, monster, position, velocityMult }}
+    {#each displayMonsters as { id, monster, position, velocityMult, finished }}
       {@const rank = ranks[id] ?? 0}
       {@const isPlayer = id === playerBetId}
       <div class="race-lane"
         class:player-bet={isPlayer}
-        class:is-leader={rank === 1}
-        class:neck-and-neck={neckAndNeck.has(id)}>
+        class:is-leader={rank === 1 && !winnerCrossed}
+        class:neck-and-neck={neckAndNeck.has(id)}
+        class:finished={finished}>
         <div class="rank-badge" class:rank-first={rank === 1}>
           {ordinal(rank)}
         </div>
@@ -458,7 +520,9 @@
           <div class="track-inner">
             <div class="progress-bar"
               style="width: {position}%; --burst-glow: {((velocityMult - BURST_GLOW_MIN_VELOCITY) / BURST_GLOW_RANGE).toFixed(3)}">
-              <span class="horror-glyph">{glyphMap[id]}</span>
+              <span class="horror-glyph" class:finished-glyph={finished}>
+                {finished ? '⚑' : glyphMap[id]}
+              </span>
             </div>
           </div>
           <div class="finish-line" class:flashing={finishLineFlashing}>
@@ -626,6 +690,34 @@
   .race-lane.player-bet.neck-and-neck,
   .race-lane.player-bet.is-leader.neck-and-neck {
     animation: tension-flash-leader 0.45s ease-in-out infinite;
+  }
+
+  /* Finished state — monster has crossed the line */
+  .race-lane.finished {
+    opacity: 0.55;
+    transition: opacity 0.6s ease;
+  }
+
+  .race-lane.finished .progress-bar {
+    filter: grayscale(0.5) brightness(0.8);
+    transition: filter 0.6s ease;
+  }
+
+  .race-lane.finished .horror-glyph.finished-glyph {
+    animation: none;
+    opacity: 0.6;
+    font-size: 1.4rem;
+  }
+
+  .race-lane.player-bet.finished {
+    opacity: 0.65;
+    border-color: var(--border-ancient);
+    box-shadow: none;
+  }
+
+  .race-lane.finished .rank-badge.rank-first {
+    color: var(--candy-color);
+    opacity: 0.7;
   }
 
   @keyframes leader-pulse {
