@@ -2,6 +2,8 @@
   import { push } from 'svelte-spa-router';
   import { history } from '../lib/stores/history.js';
   import { candies } from '../lib/stores/game.js';
+  import RaceTimer from '../lib/components/RaceTimer.svelte';
+  import RichText from '../lib/components/RichText.svelte';
 
   // Get the most recent race from history
   $: latestRace = $history.length > 0 ? $history[0] : null;
@@ -10,6 +12,14 @@
   $: playerBet = latestRace?.bet;
   $: playerWon = latestRace?.won || false;
   $: payout = latestRace?.payout || 0;
+  $: commentaryLog = latestRace?.commentary || [];
+
+  function formatRaceTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `T+${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
 
   function goToHome() {
     // Server handles race scheduling automatically
@@ -99,6 +109,27 @@
           </div>
         {/each}
       </div>
+    </div>
+
+    <!-- Commentary Log -->
+    {#if commentaryLog.length > 0}
+      <div class="commentary-log card">
+        <h3>Race Commentary</h3>
+        <div class="commentary-scroll">
+          {#each commentaryLog as entry}
+            <div class="commentary-entry">
+              <span class="time-code">[{formatRaceTime(entry.raceTime)}]</span>
+              <span class="comment-text"><RichText text={entry.text} /></span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Next Race Timer -->
+    <div class="next-race-section">
+      <h3>Next Race</h3>
+      <RaceTimer />
     </div>
 
     <!-- Actions -->
@@ -383,6 +414,92 @@
   .no-results p {
     margin-bottom: 2rem;
     font-size: 1.1rem;
+  }
+
+  .commentary-log {
+    margin-bottom: 2rem;
+  }
+
+  .commentary-log h3 {
+    margin: 0 0 1rem 0;
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .commentary-scroll {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-ancient);
+    font-family: 'Cinzel', serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+
+  .commentary-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .commentary-scroll::-webkit-scrollbar-track {
+    background: var(--bg-card);
+  }
+
+  .commentary-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-ancient);
+    border-radius: 4px;
+  }
+
+  .commentary-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--eldritch-purple);
+  }
+
+  .commentary-entry {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(107, 90, 142, 0.15);
+    transition: background 0.2s ease;
+  }
+
+  .commentary-entry:last-child {
+    border-bottom: none;
+  }
+
+  .commentary-entry:hover {
+    background: rgba(107, 90, 142, 0.08);
+  }
+
+  .time-code {
+    color: var(--text-muted);
+    font-weight: bold;
+    flex-shrink: 0;
+    min-width: 70px;
+    font-family: 'Courier New', monospace;
+    opacity: 0.7;
+  }
+
+  .comment-text {
+    color: var(--text-secondary);
+    flex: 1;
+    font-style: normal;
+    font-family: 'Cinzel', serif;
+  }
+
+  .next-race-section {
+    margin-bottom: 2rem;
+  }
+
+  .next-race-section h3 {
+    margin: 0 0 1rem 0;
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
   }
 
   @media (max-width: 768px) {

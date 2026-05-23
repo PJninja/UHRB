@@ -14,7 +14,7 @@
 
   $: maxBet = $candies;
   $: canPlaceBet = selectedMonster && betAmount >= 1 && betAmount <= maxBet;
-  $: hasActiveBet = $currentBet !== null;
+  $: hasActiveBet = $currentBet !== null && $currentBet.raceId === $serverRaceState.raceId;
   $: if (selectedMonster) betError = null;
 
   $: odds = $serverRaceState.odds ?? {};
@@ -33,9 +33,15 @@
     }
   }
 
-  function handleClearBet() {
-    clearBet();
-    betAmount = 10;
+  async function handleClearBet() {
+    betError = null;
+    try {
+      await clearBet();
+      betAmount = 10;
+    } catch (error) {
+      console.error('Failed to clear bet:', error);
+      betError = 'Failed to cancel bet — please try again.';
+    }
   }
 
   function setBetPercentage(percentage) {

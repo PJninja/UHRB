@@ -1,7 +1,7 @@
 // Game state store (refactored for server synchronization)
 import { writable, derived, get } from 'svelte/store';
 import { persistedStore } from './persistence.js';
-import { placeBet as apiBet } from '../services/api.js';
+import { placeBet as apiBet, cancelBet as apiCancelBet } from '../services/api.js';
 import { sessionId } from './session.js';
 
 // Client-managed game state (candies and current bet)
@@ -33,6 +33,19 @@ export const serverRaceState = writable({
  * @param {object} raceData - Race data from server
  */
 export function updateServerRaceState(raceData) {
+  const state = get(gameState);
+
+  // Auto-clear any stale bet from a previous race when new race data arrives
+  if (state.currentBet && state.currentBet.raceId !== raceData.raceId) {
+    const staleBet = state.currentBet;
+    gameState.update(s => ({ ...s, currentBet: null }));
+    // Fire-and-forget server cleanup (don't await — let polling continue)
+    const session = get(sessionId);
+    apiCancelBet(staleBet.raceId, session).catch(() => {
+      // Server may reject (race already started/finished) — acceptable
+    });
+  }
+
   serverRaceState.set({
     raceId: raceData.raceId,
     monsters: raceData.monsters,
@@ -88,13 +101,43 @@ export async function placeBet(monsterId, amount) {
 }
 
 /**
- * Clear current bet
+ * Clear current bet and refund to balance (calls server)
  */
-export function clearBet() {
-  gameState.update(state => ({
-    ...state,
-    currentBet: null,
-  }));
+export async function clearBet() {
+  const state = get(gameState);
+  const raceState = get(serverRaceState);
+  const session = get(sessionId);
+
+  const bet = state.currentBet;
+
+  // If no bet, just clear local state
+  if (!bet) {
+    gameState.update(s => ({ ...s, currentBet: null }));
+    return;
+  }
+
+  // If bet is for a different race (stale), clear locally without API call
+  if (bet.raceId !== raceState.raceId) {
+    gameState.update(s => ({ ...s, currentBet: null }));
+    return;
+  }
+
+  // Optimistically clear local bet immediately for responsive UI
+  gameState.update(s => ({ ...s, currentBet: null }));
+
+  try {
+    const response = await apiCancelBet(bet.raceId, session);
+    // Sync balance from server response
+    setCandyBalance(response.candyBalance);
+  } catch (error) {
+    console.error('Failed to cancel bet on server:', error);
+    // Re-instate the bet if server call failed AND bet is for current race
+    const currentRaceState = get(serverRaceState);
+    if (currentRaceState.raceId === bet.raceId) {
+      gameState.update(s => ({ ...s, currentBet: bet }));
+    }
+    throw error;
+  }
 }
 
 /**

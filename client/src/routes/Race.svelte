@@ -15,9 +15,10 @@
   const HORROR_GLYPHS = ['ᛟ', 'ᛦ', 'ᛏ', 'ᚦ', 'ᚷ', 'ᚱ'];
   let glyphMap = {};
 
-  const COMMENTARY_NORMAL_MS    = 3500;
-  const COMMENTARY_FAST_MS      = 1800; // kicks in at 75% progress
-  const FINISH_FLASH_MS         = 800;
+  const COMMENTARY_PAUSE_MS      = 700;  // pause after typing before next pool line
+  const COMMENTARY_FAST_PAUSE_MS = 300;  // same pause during final 25%
+  const FINISH_FLASH_MS          = 800;
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const NECK_AND_NECK_THRESHOLD = 6;    // % gap between 1st and 2nd to trigger tension flash
   const RACE_INTENSITY_STEPS    = 10;   // glyph speed updates in this many discrete steps
   const BURST_GLOW_MIN_VELOCITY = 0.35; // velocityMult floor (matches simulation clamp)
@@ -42,8 +43,10 @@
   let finishLineFlashing = false;
 
   // Commentary
-  let commentaryLine = '';
-  let commentaryInterval = null;
+  let commentaryLine   = '';
+  let commentaryTimer  = null;
+  let commentaryPaused = false;
+  let pendingEventLine = null;
 
   // Event commentary state
   let lastEventCommentaryTime = 0;
@@ -57,14 +60,24 @@
   let outlierRunawayFired = false;
   let outlierStragglerFired = false;
   let raceArchetype = null;
+  let milestone25Fired   = false;
+  let sustainedLeaderId  = null;
+  let sustainedLeadStart = 0;
+  let sustainedFired     = false;
+  let packFired          = false;
+  let playerSecondFired  = false;
 
   // Late-finisher commentary tracking
   let announcedFinishers = new Set();
   let winnerFinishedAt = 0;
 
-  function buildCommentary(monsterList) {
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  // Commentary logging + typewriter
+  let commentaryLog = [];
+  let typedText = '';
+  let isTyping = false;
+  let typewriterInterval = null;
 
+  function buildCommentary(monsterList) {
     const generic = [
       'The void whispers between the lanes...',
       'Reality bends beneath their passage.',
@@ -82,16 +95,36 @@
       'Time pools thickly near the starting line.',
       'There are gaps in the crowd that have always been there.',
       'The finish line waits with patience that predates patience.',
+      '<void>The void has leaned in.</void> It has chosen a favourite, but will not say.',
+      'The officials have stopped writing things down. Their pens have stopped cooperating.',
+      '<ancient>Something older than the track remembers this race.</ancient> It has seen the ending already.',
+      'The crowd has forgotten to blink. Several have forgotten to breathe.',
+      '<spectral>A sound moves through the grandstands that was not made by anything present.</spectral>',
+      'The lane markers are vibrating at a frequency that suggests disagreement.',
+      'Bettors near the rail are revising their estimates. The estimates are not improving.',
+      '<eldritch>Whatever is happening at the front of the field is not being reported accurately.</eldritch>',
+      'The track surface has opinions about this race. They are not positive.',
+      "The crowd's silence is louder than its cheering. This is understood by everyone.",
+      "Something in the official's booth has stopped functioning. The officials have not noticed.",
+      '<madness>The race exists. This continues to be true. This cannot be taken for granted.</madness>',
     ];
 
     const specific = monsterList.flatMap(m => {
-      const lines = [
+      const basePool = [
         `${m.name} ${m.racingStyle.toLowerCase()} with terrible purpose.`,
-        `The crowd recoils as ${m.name} draws near.`,
         `${m.name} has come from ${m.location}. It remembers nothing of peace.`,
         `Witnesses describe ${m.name} in contradictory terms, all of them wrong.`,
-        `The judges record ${m.name}'s temperament as: ${m.temperament}. They close the file.`,
+        `The judges record ${m.name}'s temperament as: <ancient>${m.temperament}</ancient>. They close the file.`,
+        `${m.name} does not acknowledge the other competitors. This may be mercy.`,
+        `The lane assigned to ${m.name} has not been the same since.`,
+        `Observers near ${m.name}'s lane have begun keeping their distance without understanding why.`,
+        `<void>${m.name}</void> arrived before the starting signal. No one saw them arrive.`,
       ];
+      for (let i = basePool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [basePool[i], basePool[j]] = [basePool[j], basePool[i]];
+      }
+      const lines = basePool.slice(0, 4);
 
       if (m.traits.speed >= 7) {
         lines.push(`${m.name} accelerates in a way that the eye refuses to follow.`);
@@ -125,7 +158,18 @@
       return lines;
     });
 
-    const pool = [...generic, ...specific];
+    // One crowd-reaction line per race, for one randomly chosen monster, varied phrasing
+    const crowdMonster = monsterList[Math.floor(Math.random() * monsterList.length)];
+    const crowdReactionLine = pick([
+      `The crowd recoils as ${crowdMonster.name} draws near.`,
+      `The audience presses back as ${crowdMonster.name} passes the stands.`,
+      `Something in the crowd recognizes ${crowdMonster.name}. The rest try not to.`,
+      `Spectators near ${crowdMonster.name}'s lane begin moving toward the exits.`,
+      `${crowdMonster.name} passes close to the crowd. Several do not look up.`,
+      `The crowd does not cheer for ${crowdMonster.name}. They understand it is not cheering that is called for.`,
+    ]);
+
+    const pool = [...generic, ...specific, crowdReactionLine];
 
     if (raceArchetype === 'wire-to-wire') {
       pool.push('One creature has decided this race is already over. It may be right.');
@@ -148,17 +192,96 @@
     return pool;
   }
 
+  function startTypewriter(line, onComplete) {
+    if (typewriterInterval) { clearInterval(typewriterInterval); typewriterInterval = null; }
+    commentaryLine = line;
+    typedText = '';
+    isTyping = true;
+
+    let rawIndex = 0;
+    let committed = '';
+    const openTagStack = [];
+
+    function closingSuffix() {
+      return [...openTagStack].reverse().map(t => `</${t}>`).join('');
+    }
+
+    function consumeTags() {
+      while (rawIndex < line.length && line[rawIndex] === '<') {
+        const closeAngle = line.indexOf('>', rawIndex);
+        if (closeAngle === -1) break;
+        const tagContent = line.slice(rawIndex + 1, closeAngle);
+        committed += line.slice(rawIndex, closeAngle + 1);
+        rawIndex = closeAngle + 1;
+        if (tagContent.startsWith('/')) {
+          openTagStack.pop();
+        } else {
+          openTagStack.push(tagContent.split(' ')[0]);
+        }
+      }
+    }
+
+    typewriterInterval = setInterval(() => {
+      consumeTags();
+      if (rawIndex < line.length) {
+        committed += line[rawIndex++];
+        typedText = committed + closingSuffix();
+      } else {
+        typedText = committed;
+        isTyping = false;
+        clearInterval(typewriterInterval);
+        typewriterInterval = null;
+        onComplete?.();
+      }
+    }, commentaryFast ? 30 : 50);
+  }
+
+  function scheduleNextPoolLine() {
+    if (commentaryPaused) return;
+    const pause = commentaryFast ? COMMENTARY_FAST_PAUSE_MS : COMMENTARY_PAUSE_MS;
+    commentaryTimer = setTimeout(() => {
+      if (commentaryPaused) return;
+      if (pendingEventLine) {
+        const line = pendingEventLine;
+        pendingEventLine = null;
+        startTypewriter(line, scheduleNextPoolLine);
+      } else {
+        commentaryIdx = (commentaryIdx + 1) % commentary.length;
+        const line = commentary[commentaryIdx];
+        logCommentaryLine(line);
+        startTypewriter(line, scheduleNextPoolLine);
+      }
+    }, pause);
+  }
+
+  function logCommentaryLine(line) {
+    const now = Date.now();
+    const raceTime = startTime ? now - startTime : 0;
+    commentaryLog = [...commentaryLog, { text: line, timestamp: now, raceTime }];
+  }
+
   function injectEventLine(line) {
     const now = Date.now();
     if (now - lastEventCommentaryTime < EVENT_COOLDOWN_MS) return;
     lastEventCommentaryTime = now;
-    commentaryLine = line;
+    const raceTime = startTime ? now - startTime : 0;
+    commentaryLog = [...commentaryLog, { text: line, timestamp: now, raceTime }];
+    pendingEventLine = line;
+    // If between lines (pause timer running, not typing), rush the pending event
+    if (!isTyping && commentaryTimer) {
+      clearTimeout(commentaryTimer);
+      commentaryTimer = setTimeout(() => {
+        if (commentaryPaused) return;
+        const pending = pendingEventLine;
+        pendingEventLine = null;
+        startTypewriter(pending, scheduleNextPoolLine);
+      }, 150);
+    }
+    // If currently typing, pending slot is consumed by scheduleNextPoolLine when done
   }
 
   function detectCommentaryEvents() {
     if (raceFinished) return;
-
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     const sorted = raceMonsters
       .map(m => ({ monster: m, position: positions[m.id]?.position ?? 0, velocityMult: positions[m.id]?.velocityMult ?? 1.0, finished: positions[m.id]?.finished ?? false }))
@@ -176,6 +299,9 @@
         `<gold>${currentLeader.monster.name}</gold> moves to the front. Your investment watches you back.`,
         `Your chosen horror, ${currentLeader.monster.name}, leads the field. The void notes your confidence.`,
         `${currentLeader.monster.name} surges ahead. The candies you placed on them lean forward in anticipation.`,
+        `<gold>${currentLeader.monster.name}</gold> leads. Your bet nods imperceptibly.`,
+        `The thing you bet on is winning. This is a feeling. Hold it carefully.`,
+        `<gold>${currentLeader.monster.name}</gold> is first. Your candies are watching from the front row.`,
       ]));
     // Generic leadership change (only when the new leader is not the player's pick)
     } else if (prevLeaderId !== null && currentLeader.monster.id !== prevLeaderId) {
@@ -184,6 +310,9 @@
         `${currentLeader.monster.name} surges forward. The crowd forgets who they were cheering for.`,
         `The order of things has shifted. ${currentLeader.monster.name} leads now.`,
         `${currentLeader.monster.name} has taken first position. The void adjusts its expectations.`,
+        `Something at the front has changed. ${currentLeader.monster.name} is proof of it.`,
+        `${currentLeader.monster.name} does not acknowledge the lead. It simply has it.`,
+        `The previous leader has been noted and set aside. ${currentLeader.monster.name} continues.`,
       ]));
     }
     prevLeaderId = currentLeader.monster.id;
@@ -195,6 +324,10 @@
         `${a.monster.name} and ${b.monster.name} are inseparable. This is not a metaphor.`,
         `The gap between ${a.monster.name} and ${b.monster.name} has ceased to exist in any meaningful sense.`,
         `Two horrors. One position. The lane markers are filing a protest.`,
+        `${a.monster.name} and ${b.monster.name} occupy the same moment in the race. Physics has tabled its concerns.`,
+        `<glow>The gap is zero.</glow> ${a.monster.name} and ${b.monster.name} are a single event.`,
+        `Neither ${a.monster.name} nor ${b.monster.name} will yield. The finish line is taking this personally.`,
+        `The distance between ${a.monster.name} and ${b.monster.name} cannot be expressed in any unit the officials recognise.`,
       ]));
     }
     prevNeckAndNeckActive = neckActive;
@@ -205,6 +338,9 @@
         `${currentLast.monster.name} occupies last place. Your candies observe this in silence.`,
         `<blood>Last.</blood> ${currentLast.monster.name} trails the field. The crowd has already forgotten your bet.`,
         `The void has opinions about ${currentLast.monster.name}'s current position. So do your candies.`,
+        `<blood>${currentLast.monster.name}</blood> is last. The candies you wagered are reconsidering their trajectory.`,
+        `Your pick trails everything. ${currentLast.monster.name} appears unconcerned. Your candies are concerned.`,
+        `${currentLast.monster.name} occupies the rear of the field with what might be described as intention.`,
       ]));
     }
 
@@ -215,9 +351,23 @@
           `${monster.name} enters a state that the track was not designed for.`,
           `${monster.name} is moving too quickly. Several spectators have misplaced their names.`,
           `<glow>Something is wrong with ${monster.name}'s velocity.</glow> The judges look elsewhere.`,
+          `<glow>${monster.name}</glow> has exceeded what was expected. The track has noted this without approving it.`,
+          `The officials have clocked ${monster.name} at a speed they will not repeat aloud.`,
+          `Something has happened to ${monster.name}'s pace. The judges are writing it down under the wrong category.`,
         ]));
         break;
       }
+    }
+
+    // Milestone: 25%
+    if (!milestone25Fired && raceProgress >= 0.25) {
+      milestone25Fired = true;
+      injectEventLine(pick([
+        'The opening quarter ends. The creatures have shown something of themselves.',
+        'Twenty-five percent complete. The track has begun to understand what it is dealing with.',
+        'A quarter of the race is behind them. Some things are becoming clear.',
+        'The first phase concludes. The void adjusts its attention.',
+      ]));
     }
 
     // Milestone: 50%
@@ -227,6 +377,9 @@
         'The halfway point has been crossed. What lies ahead is worse than what lies behind.',
         'Half the race is over. The horrors are only beginning to remember what they are.',
         'Fifty percent. The track sighs with something that might be relief, if it were capable.',
+        'The midpoint passes beneath them. From here, there is only finish or failure.',
+        'Half remains. The horrors have decided what kind of race this will be.',
+        'The second half begins. The first half does not miss them.',
       ]));
     }
 
@@ -237,6 +390,9 @@
         'The final stretch approaches. The crowd has stopped pretending to be calm.',
         'Three quarters gone. Whatever happens now, something will remember it forever.',
         'The finish line is close enough to smell. It smells like inevitability.',
+        '<ancient>The end is visible from here.</ancient> Several competitors have seen it and adjusted accordingly.',
+        'The last quarter opens. Whatever has been held in reserve is being spent now.',
+        'The finish line has entered the frame. The race has become a different race.',
       ]));
     }
 
@@ -249,6 +405,9 @@
         `${m.name} surges ahead with a velocity that troubles the officials. Something has changed.`,
         `The distance between ${m.name} and the rest is no longer a gap. It is a statement.`,
         `<cosmic>${m.name} has decided the other competitors are not relevant.</cosmic>`,
+        `<cosmic>${m.name} is operating in a different race from the rest of the field.</cosmic>`,
+        `The gap behind ${m.name} is no longer a gap. It is a philosophical position.`,
+        `${m.name} leads by a margin that the other competitors have stopped measuring.`,
       ]));
     }
 
@@ -261,11 +420,61 @@
         `<blood>${m.name}</blood> trails alone. Whatever is happening to them, it is private.`,
         `The distance between ${m.name} and the field is growing. The officials have stopped measuring.`,
         `${m.name} moves at a pace that suggests reconsideration of the entire enterprise.`,
+        `${m.name} trails by a distance that the judges are embarrassed to measure.`,
+        `<blood>${m.name}</blood> has been left behind. Whether this was intentional is unclear.`,
+        `Something about ${m.name}'s pace suggests they have found a different race to be in.`,
       ]));
     }
 
-    // Late finisher commentary: monsters crossing well after the winner
+    // Sustained leader: same monster holds first for ≥25% of race duration
     const now = Date.now();
+    if (currentLeader.monster.id !== sustainedLeaderId) {
+      sustainedLeaderId  = currentLeader.monster.id;
+      sustainedLeadStart = now;
+    }
+    if (!sustainedFired && raceProgress >= 0.35) {
+      const holdDuration = now - sustainedLeadStart;
+      if (holdDuration >= raceData.duration * 0.25) {
+        sustainedFired = true;
+        injectEventLine(pick([
+          `${currentLeader.monster.name} has held first place long enough that the others have started to accept it.`,
+          `<glow>${currentLeader.monster.name}</glow> continues to lead. This is no longer surprising. That may be the most alarming part.`,
+          `The front position has not changed hands. ${currentLeader.monster.name} is comfortable there. That is not comfortable to observe.`,
+          `${currentLeader.monster.name} has led for long enough that the race has reshaped itself around them.`,
+        ]));
+      }
+    }
+
+    // Pack clustering: 3+ monsters within 8% band, fires once between 30–70%
+    if (!packFired && raceProgress >= 0.3 && raceProgress <= 0.7) {
+      const span = sorted[0].position - sorted[Math.min(2, sorted.length - 1)].position;
+      if (span <= 8 && sorted.length >= 3) {
+        packFired = true;
+        injectEventLine(pick([
+          'Three or more horrors occupy the same stretch of track. The officials cannot separate them.',
+          'The field has compressed. This is not an improvement for anyone involved.',
+          '<eldritch>They are too close together.</eldritch> Something about this proximity is producing effects.',
+          'The pack is tight. This will resolve itself. The resolution will not be calm.',
+        ]));
+      }
+    }
+
+    // Player's bet in 2nd place near finish, fires once after 60%
+    if (!playerSecondFired && raceProgress >= 0.6 && playerBetId) {
+      const playerEntry = sorted.find(s => s.monster.id === playerBetId);
+      const playerRank  = playerEntry ? sorted.indexOf(playerEntry) + 1 : null;
+      if (playerRank === 2) {
+        playerSecondFired = true;
+        injectEventLine(pick([
+          `<gold>${playerEntry.monster.name}</gold> is second. The gap to first is measurable. It is being measured by your candies.`,
+          `Your pick is one position from the front. ${playerEntry.monster.name} knows this. So do you.`,
+          `<gold>${playerEntry.monster.name}</gold> trails the leader. This is either the beginning of something or the end of it.`,
+          `Second place. ${playerEntry.monster.name} has the position. The question is whether it intends to use it.`,
+        ]));
+      }
+    }
+
+    // Late finisher commentary: monsters crossing well after the winner
     if (winnerFinishedAt > 0 && now - winnerFinishedAt > 2000) {
       for (const { monster, finished } of sorted) {
         if (finished && !announcedFinishers.has(monster.id) && monster.id !== winner?.id) {
@@ -275,6 +484,9 @@
             `${monster.name} completes the journey. The finish line had begun to forget them.`,
             `At last, ${monster.name} arrives. The void kept a place for them.`,
             `${monster.name} crosses the line. The judges had already closed their books.`,
+            `${monster.name} has arrived. The crowd had assumed they wouldn't.`,
+            `<ancient>${monster.name}</ancient> crosses the line. The race waited. Barely.`,
+            `${monster.name} finishes. The judges reopen the books.`,
           ]));
           break; // Only announce one late finisher per event cycle
         }
@@ -315,11 +527,9 @@
 
     // Build commentary after archetype is known so archetype lines are included
     commentary = buildCommentary(raceMonsters);
-    commentaryLine = commentary[0];
-    commentaryInterval = setInterval(() => {
-      commentaryIdx = (commentaryIdx + 1) % commentary.length;
-      commentaryLine = commentary[commentaryIdx];
-    }, COMMENTARY_NORMAL_MS);
+    const firstLine = commentary[0];
+    logCommentaryLine(firstLine);
+    startTypewriter(firstLine, scheduleNextPoolLine);
 
     startTime = Date.now() - elapsed;
     animateRace();
@@ -327,7 +537,8 @@
 
   onDestroy(() => {
     if (animationFrame) cancelAnimationFrame(animationFrame);
-    if (commentaryInterval) clearInterval(commentaryInterval);
+    if (commentaryTimer) clearTimeout(commentaryTimer);
+    if (typewriterInterval) clearInterval(typewriterInterval);
   });
 
   function animateRace() {
@@ -353,15 +564,10 @@
 
     detectCommentaryEvents();
 
-    // Speed up commentary in final 25% of official duration
+    // Speed up commentary in final 25% — future startTypewriter calls use 30ms/char + shorter pause
     const officialProgress = elapsed / raceData.duration;
     if (officialProgress >= 0.75 && !commentaryFast) {
       commentaryFast = true;
-      clearInterval(commentaryInterval);
-      commentaryInterval = setInterval(() => {
-        commentaryIdx = (commentaryIdx + 1) % commentary.length;
-        commentaryLine = commentary[commentaryIdx];
-      }, COMMENTARY_FAST_MS);
     }
 
     // Finish line flash when leader hits 98%
@@ -382,9 +588,27 @@
 
   async function handleRaceFinish() {
     raceFinished = true;
+    commentaryPaused = true;
     isValidating = true;
-    if (commentaryInterval) clearInterval(commentaryInterval);
-    commentaryLine = 'The void renders its verdict...';
+    if (commentaryTimer) { clearTimeout(commentaryTimer); commentaryTimer = null; }
+
+    // Typed verdict line → typed winner line → redirect 2s after winner finishes
+    const verdictLine = 'The void renders its verdict...';
+    logCommentaryLine(verdictLine);
+    startTypewriter(verdictLine, () => {
+      const name = winner?.name ?? 'A horror';
+      const winnerLine = pick([
+        `<gold>${name}</gold> crosses the finish line. The void records the outcome.`,
+        `${name} has won. The rest were merely witnesses.`,
+        `<glow>${name}</glow> claims the race. Nothing disputes the result.`,
+        `The verdict is ${name}. The crowd processes this at their own pace.`,
+        `${name} finishes first. The race closes behind them like a wound.`,
+      ]);
+      logCommentaryLine(winnerLine);
+      startTypewriter(winnerLine, () => {
+        setTimeout(() => push('/results'), 2000);
+      });
+    });
 
     const raceState = get(serverRaceState);
     const session = get(sessionId);
@@ -412,6 +636,7 @@
             won: validation.won,
             payout: validation.payout,
             timestamp: Date.now(),
+            commentary: commentaryLog,
           });
         } else {
           payoutError = 'Payout validation failed. Please try refreshing.';
@@ -426,10 +651,21 @@
       isValidating = false;
       validationResult = { won: false };
       const raceWinner = raceState.winner || winner;
-      winner = raceWinner;
-    }
 
-    setTimeout(() => push('/results'), 3500);
+      const sortedMonsters = raceState.rankings?.length
+        ? raceState.rankings.map(r => r.monster)
+        : raceMonsters;
+
+      addRaceToHistory({
+        monsters: sortedMonsters,
+        winner: raceWinner,
+        bet: null,
+        won: false,
+        payout: 0,
+        timestamp: Date.now(),
+        commentary: commentaryLog,
+      });
+    }
   }
 
   $: displayMonsters = raceMonsters.map(monster => ({
@@ -533,10 +769,8 @@
     {/each}
   </div>
 
-  <div class="commentary-ticker" class:fading={raceFinished}>
-    <span class="ticker-icon">⟪</span>
-    <span class="ticker-text"><RichText text={commentaryLine} /></span>
-    <span class="ticker-icon">⟫</span>
+  <div class="commentary-ticker" class:fading={raceFinished} class:typing={isTyping}>
+    <span class="ticker-text"><RichText text={typedText} /></span>
   </div>
 
   {#if raceFinished}
@@ -970,33 +1204,33 @@
   .commentary-ticker {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 1rem;
-    padding: 0.75rem 1.5rem;
-    background: var(--bg-card);
-    border: 2px solid var(--border-ancient);
-    min-height: 3rem;
+    padding: 1.25rem 2rem;
+    background: rgba(14, 19, 32, 0.95);
+    border: 3px solid var(--border-ancient);
+    min-height: 4.5rem;
     transition: opacity 0.6s ease;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    position: relative;
   }
 
   .commentary-ticker.fading {
     opacity: 0.5;
   }
 
-  .ticker-icon {
-    color: var(--eldritch-purple);
-    font-size: 1.1rem;
-    opacity: 0.7;
-    flex-shrink: 0;
-  }
-
   .ticker-text {
-    font-style: italic;
-    color: var(--text-secondary);
-    font-size: 0.95rem;
+    font-style: normal;
+    color: var(--text-accent);
+    font-size: 1.2rem;
     letter-spacing: 0.5px;
-    text-align: center;
+    text-align: left;
     transition: opacity 0.4s ease;
+    line-height: 1.4;
+    min-height: 2rem;
+    width: 100%;
+    text-shadow: 0 0 12px rgba(107, 90, 142, 0.3);
+    font-family: 'Cinzel', serif;
   }
 
   /* ── Finish Overlay ─────────────────────────────────── */

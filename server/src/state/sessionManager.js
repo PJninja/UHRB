@@ -173,6 +173,20 @@ export function creditPayout(sessionId, payout) {
 }
 
 /**
+ * Refund a bet amount to a session's candy balance.
+ * @param {string} sessionId
+ * @param {number} amount
+ * @returns {{ ok: boolean, candyBalance?: number, reason?: string }}
+ */
+export function refundBet(sessionId, amount) {
+  const session = getSession(sessionId);
+  if (!session) return { ok: false, reason: 'session_not_found' };
+  session.candyBalance += amount;
+  log.debug({ sessionId, amount, candyBalance: session.candyBalance }, 'bet refunded');
+  return { ok: true, candyBalance: session.candyBalance };
+}
+
+/**
  * Get the current candy balance for a session.
  * @param {string} sessionId
  * @returns {number|null}

@@ -4,6 +4,7 @@ vi.mock('../../src/services/raceScheduler.js', () => ({
   getCurrentRace:   vi.fn(),
   isBettingAllowed: vi.fn(),
   addBetToTotal:    vi.fn(),
+  decrementBetTotal: vi.fn(),
   racePayload:      vi.fn(race => race),
   sanitizeMonster:  vi.fn(m => m),
   forceAdvance:     vi.fn(),
@@ -544,5 +545,102 @@ describe('POST /api/race/:raceId/payout/validate', () => {
 
     // Balance should stay at 5 — mercy floor must not fire for non-bettors
     expect(res.json().candyBalance).toBe(5);
+  });
+});
+
+// ─── DELETE /api/race/:raceId/bet ────────────────────────────────────────────
+
+function cancelPayload(overrides = {}) {
+  return {
+    sessionId: 'WILL_BE_REPLACED',
+    ...overrides,
+  };
+}
+
+describe('DELETE /api/race/:raceId/bet', () => {
+  it('cancels a bet successfully and refunds balance', async () => {
+    const sessionId = await createSession();
+    // Place a bet first
+    const betRes = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 50 }),
+    });
+    expect(betRes.statusCode).toBe(200);
+    expect(betRes.json().candyBalance).toBe(50);
+
+    // Now cancel it
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: cancelPayload({ sessionId }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+    expect(res.json().refunded).toBe(50);
+    expect(res.json().candyBalance).toBe(100);
+  });
+
+  it('returns 400 when sessionId is missing', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 for an unknown session', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: cancelPayload({ sessionId: 'session_ghost' }),
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 404 when no active bet exists', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: cancelPayload({ sessionId }),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 when bet is for a different race', async () => {
+    const sessionId = await createSession();
+    // Place bet via direct session manager so we can forge a stale raceId
+    const { storeBet } = await import('../../src/state/sessionManager.js');
+    storeBet(sessionId, 'old-race-id', MONSTER_A.id, 50);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: cancelPayload({ sessionId }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 409 when betting is closed', async () => {
+    const sessionId = await createSession();
+    // Place a bet
+    const betRes = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 50 }),
+    });
+    expect(betRes.statusCode).toBe(200);
+
+    // Close betting
+    isBettingAllowed.mockReturnValue(false);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: cancelPayload({ sessionId }),
+    });
+    expect(res.statusCode).toBe(409);
   });
 });

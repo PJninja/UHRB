@@ -7,7 +7,7 @@ vi.mock('../src/utils/logger.js', () => ({
 import {
   createSession, getSession, validateSession,
   storeBet, getCurrentBet, clearBet,
-  getActiveSessions, deductBet, creditPayout, getBalance,
+  getActiveSessions, deductBet, creditPayout, getBalance, refundBet,
 } from '../src/state/sessionManager.js';
 import { config } from '../src/config.js';
 
@@ -253,5 +253,21 @@ describe('getBalance', () => {
 
   it('returns null for an unknown session', () => {
     expect(getBalance('session_ghost')).toBeNull();
+  });
+});
+
+describe('refundBet', () => {
+  it('adds the amount back to the balance', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 50);                    // balance → 50
+    const result = refundBet(sessionId, 50);     // balance → 100
+    expect(result.ok).toBe(true);
+    expect(result.candyBalance).toBe(config.startingBalance);
+  });
+
+  it('returns ok: false for missing session', () => {
+    const result = refundBet('session_ghost', 50);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('session_not_found');
   });
 });

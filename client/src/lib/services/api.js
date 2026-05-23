@@ -94,6 +94,31 @@ export async function placeBet(raceId, sessionId, monsterId, amount) {
 }
 
 /**
+ * Cancel/clear an active bet
+ * @param {string} raceId
+ * @param {string} sessionId
+ * @returns {Promise<{success: boolean, refunded: number, candyBalance: number}>}
+ */
+export async function cancelBet(raceId, sessionId) {
+  const response = await fetch(`${API_BASE}/race/${raceId}/bet`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `Failed to cancel bet: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Validate payout after race finishes (anti-cheat)
  * @param {string} raceId
  * @param {string} sessionId

@@ -219,4 +219,10 @@
     padding: 0.6rem 1rem;
     margin-top: 0.25rem;
   }
+
+  @media (max-width: 768px) {
+    .betting-context {
+      position: static;
+    }
+  }
 </style>

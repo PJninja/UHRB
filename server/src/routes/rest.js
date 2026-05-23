@@ -1,6 +1,6 @@
 // REST API routes
-import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet } from '../state/sessionManager.js';
-import { getCurrentRace, isBettingAllowed, addBetToTotal, racePayload } from '../services/raceScheduler.js';
+import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet, getCurrentBet, refundBet } from '../state/sessionManager.js';
+import { getCurrentRace, isBettingAllowed, addBetToTotal, decrementBetTotal, racePayload } from '../services/raceScheduler.js';
 import { validatePayout } from '../services/payoutValidator.js';
 
 /**
@@ -182,6 +182,79 @@ export async function registerRestRoutes(fastify) {
       bet: result.bet,
       error: result.error,
       candyBalance,
+    };
+  });
+
+  // Cancel/clear an active bet
+  fastify.delete('/api/race/:raceId/bet', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { raceId } = request.params;
+    const { sessionId } = request.body;
+
+    // Validate request
+    if (!sessionId) {
+      return reply.code(400).send({
+        error: 'Missing required field: sessionId',
+      });
+    }
+
+    // Validate session
+    if (!validateSession(sessionId)) {
+      return reply.code(401).send({
+        error: 'Invalid or expired session',
+      });
+    }
+
+    // Get current bet
+    const currentBet = getCurrentBet(sessionId);
+
+    if (!currentBet) {
+      return reply.code(404).send({
+        error: 'No active bet to cancel',
+      });
+    }
+
+    // Validate bet is for the current race
+    if (currentBet.raceId !== raceId) {
+      return reply.code(400).send({
+        error: 'Bet is for a different race',
+      });
+    }
+
+    // Get current race to check if betting is still open
+    const race = getCurrentRace();
+
+    if (!race || race.id !== raceId) {
+      return reply.code(404).send({
+        error: 'Race not found',
+      });
+    }
+
+    // Only allow canceling if race hasn't started yet
+    if (!isBettingAllowed()) {
+      return reply.code(409).send({
+        error: 'Cannot cancel bet - race has started',
+      });
+    }
+
+    // Refund the bet amount
+    const refund = refundBet(sessionId, currentBet.amount);
+
+    if (!refund.ok) {
+      return reply.code(500).send({
+        error: 'Failed to refund bet',
+      });
+    }
+
+    // Clear the bet from session
+    clearBet(sessionId);
+
+    // Decrement bet totals for the monster
+    decrementBetTotal(currentBet.monsterId, currentBet.amount);
+
+    return {
+      success: true,
+      refunded: currentBet.amount,
+      candyBalance: refund.candyBalance,
     };
   });
 }

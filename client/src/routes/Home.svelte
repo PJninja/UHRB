@@ -19,7 +19,9 @@
     selectedMonster = monster;
   }
 
-  $: selectedMonsterId = selectedMonster?.id || $currentBet?.monsterId;
+  // Only treat a bet as valid if it matches the current race
+  $: validBet = $currentBet && $currentBet.raceId === $serverRaceState.raceId ? $currentBet : null;
+  $: selectedMonsterId = selectedMonster?.id || validBet?.monsterId;
 
   onMount(() => {
     const ctx = canvas.getContext('2d');
@@ -102,10 +104,10 @@
               {monster}
               compact={true}
               selected={monster.id === selectedMonster?.id}
-              hasBet={$currentBet !== null && monster.id === $currentBet.monsterId}
+              hasBet={validBet !== null && monster.id === validBet.monsterId}
               betTotal={$serverRaceState.betTotals?.[monster.id] || 0}
               onSelect={handleSelectMonster}
-              disabled={$currentBet !== null && monster.id !== $currentBet.monsterId}
+              disabled={validBet !== null && monster.id !== validBet.monsterId}
             />
           {/each}
         </div>

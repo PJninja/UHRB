@@ -247,6 +247,22 @@ export function addBetToTotal(monsterId, amount) {
 }
 
 /**
+ * Decrement the bet total for a specific monster (when bet is canceled)
+ * @param {string} monsterId
+ * @param {number} amount
+ */
+export function decrementBetTotal(monsterId, amount) {
+  if (!currentRace || !currentRace.betTotals) return;
+  currentRace.betTotals[monsterId] = Math.max(0, (currentRace.betTotals[monsterId] || 0) - amount);
+
+  // Debounced broadcast
+  clearTimeout(betBroadcastTimeout);
+  betBroadcastTimeout = setTimeout(() => {
+    broadcast('race:update', racePayload(currentRace));
+  }, 300);
+}
+
+/**
  * Immediately advance the race to the next phase (test mode only).
  * waiting/closed → racing → finished → waiting
  */
