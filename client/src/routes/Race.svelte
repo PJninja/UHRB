@@ -497,6 +497,12 @@
   let commentary = [];
   let commentaryIdx = 0;
 
+  // Snapshots taken at mount — immune to the next-race WebSocket arriving before
+  // the animation finishes (visualDuration can exceed the server's 5 s cooldown
+  // in blowout finishes, so updateServerRaceState may clear these stores first).
+  let mountedRaceId = null;
+  let mountedBet    = null;
+
   onMount(() => {
     if ($monsters.length === 0) {
       push('/');
@@ -512,6 +518,8 @@
     });
 
     const srs = get(serverRaceState);
+    mountedRaceId = srs.raceId;
+    mountedBet    = get(currentBet);
     const serverRankings = srs.rankings;
     // Use the server's authoritative duration so both sides finish at the same time.
     // Fall back to a local random only if the server hasn't sent one yet.
@@ -610,14 +618,13 @@
       });
     });
 
-    const raceState = get(serverRaceState);
     const session = get(sessionId);
-    const bet = get(currentBet);
-    const isBetForThisRace = bet && bet.raceId === raceState.raceId;
+    const bet = mountedBet;
+    const isBetForThisRace = bet && bet.raceId === mountedRaceId;
 
     if (isBetForThisRace) {
       try {
-        const validation = await validatePayout(raceState.raceId, session, bet);
+        const validation = await validatePayout(mountedRaceId, session, bet);
         isValidating = false;
         validationResult = validation;
 

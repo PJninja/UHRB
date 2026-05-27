@@ -3,11 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../src/utils/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
-vi.mock('../src/services/raceScheduler.js', () => ({ getCurrentRace: vi.fn() }));
+vi.mock('../src/services/raceScheduler.js', () => ({ getCurrentRace: vi.fn(), getLastFinishedRace: vi.fn() }));
 vi.mock('../src/state/sessionManager.js', () => ({ getCurrentBet: vi.fn() }));
 
 import { validatePayout } from '../src/services/payoutValidator.js';
-import { getCurrentRace } from '../src/services/raceScheduler.js';
+import { getCurrentRace, getLastFinishedRace } from '../src/services/raceScheduler.js';
 import { getCurrentBet } from '../src/state/sessionManager.js';
 
 const SESSION = 'session_test';

@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 
 vi.mock('../../src/services/raceScheduler.js', () => ({
-  getCurrentRace:   vi.fn(),
-  isBettingAllowed: vi.fn(),
-  addBetToTotal:    vi.fn(),
-  decrementBetTotal: vi.fn(),
-  racePayload:      vi.fn(race => race),
-  sanitizeMonster:  vi.fn(m => m),
-  forceAdvance:     vi.fn(),
-  scheduleNextRace: vi.fn(),
-  finishRace:       vi.fn(),
+  getCurrentRace:      vi.fn(),
+  getLastFinishedRace: vi.fn(),
+  isBettingAllowed:    vi.fn(),
+  addBetToTotal:       vi.fn(),
+  decrementBetTotal:   vi.fn(),
+  racePayload:         vi.fn(race => race),
+  sanitizeMonster:     vi.fn(m => m),
+  forceAdvance:        vi.fn(),
+  scheduleNextRace:    vi.fn(),
+  finishRace:          vi.fn(),
 }));
 vi.mock('../../src/utils/logger.js', () => {
   const noop = { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} };

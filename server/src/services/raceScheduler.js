@@ -74,6 +74,7 @@ let currentRace = {
 
 let previousMonsters = [];
 let previousWinner = null;
+let lastFinishedRace = null;
 let raceTimeout = null;
 let timerInterval = null;
 let betBroadcastTimeout = null;
@@ -89,6 +90,10 @@ export function getCurrentRace() {
       ? Math.max(0, Math.floor((currentRace.nextRaceTime - Date.now()) / 1000))
       : 0,
   };
+}
+
+export function getLastFinishedRace() {
+  return lastFinishedRace;
 }
 
 /**
@@ -218,7 +223,9 @@ export function startRace() {
 export function finishRace() {
   log.info({ raceId: currentRace.id, winner: currentRace.winner.name }, 'race finished');
 
+  lastFinishedRace = null; // clear previous before setting new
   currentRace.state = 'finished';
+  lastFinishedRace = currentRace;
   previousWinner = currentRace.winner?.isLegendary ? null : currentRace.winner;
 
   broadcast('race:update', racePayload(currentRace));

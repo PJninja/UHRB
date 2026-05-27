@@ -1,5 +1,5 @@
 // Payout validation service (anti-cheat)
-import { getCurrentRace } from './raceScheduler.js';
+import { getCurrentRace, getLastFinishedRace } from './raceScheduler.js';
 import { getCurrentBet } from '../state/sessionManager.js';
 import { logger } from '../utils/logger.js';
 
@@ -14,8 +14,10 @@ const log = logger.child({ module: 'payoutValidator' });
  * @returns {object} Validation result
  */
 export function validatePayout(sessionId, claimedBet) {
-  // Get the current race (source of truth for winner/odds)
-  const race = getCurrentRace();
+  // Prefer the live current race if it's finished; fall back to the last finished race
+  // to handle the window where the next race has already been scheduled.
+  const livRace = getCurrentRace();
+  const race = (livRace.state === 'finished') ? livRace : getLastFinishedRace();
 
   // Get the actual bet from server storage (source of truth for bet amount)
   const actualBet = getCurrentBet(sessionId);
@@ -32,7 +34,7 @@ export function validatePayout(sessionId, claimedBet) {
   };
 
   // Check if race is finished
-  if (race.state !== 'finished') {
+  if (!race || race.state !== 'finished') {
     result.error = 'Race not finished yet';
     return result;
   }
