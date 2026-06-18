@@ -9,8 +9,8 @@
   import Results from './routes/Results.svelte';
   import History from './routes/History.svelte';
   import About from './routes/About.svelte';
-  import { raceState, updateServerRaceState, setCandyBalance, candies } from './lib/stores/game.js';
-  import { sessionId } from './lib/stores/session.js';
+  import { raceState, updateServerRaceState, setCandyBalance } from './lib/stores/game.js';
+  import { sessionId, balanceToken } from './lib/stores/session.js';
   import { setMonsters } from './lib/stores/monsters.js';
   import { createSession, validateSession } from './lib/services/api.js';
   import { startSocket, stopSocket } from './lib/services/raceSocket.js';
@@ -35,10 +35,11 @@
       let session = $sessionId;
 
       if (!session) {
-        // Create new session, carrying over any balance persisted in localStorage
-        const response = await createSession({ claimedBalance: get(candies) });
+        // Create new session. Pass the signed balance token so the server can
+        // restore the last known candy balance — never pass raw numbers.
+        const response = await createSession({ balanceToken: get(balanceToken) });
         sessionId.set(response.sessionId);
-        setCandyBalance(response.candyBalance);
+        setCandyBalance(response.candyBalance, response.balanceToken);
         session = response.sessionId;
         console.log('[App] Created new session:', session);
       } else {
@@ -46,23 +47,23 @@
         try {
           const validation = await validateSession(session);
           if (!validation.valid) {
-            // Session expired — create new one, carrying over persisted balance
-            const response = await createSession({ claimedBalance: get(candies) });
+            // Session expired — create new one with carry-over token
+            const response = await createSession({ balanceToken: get(balanceToken) });
             sessionId.set(response.sessionId);
-            setCandyBalance(response.candyBalance);
+            setCandyBalance(response.candyBalance, response.balanceToken);
             session = response.sessionId;
             console.log('[App] Session expired, created new one:', session);
           } else {
-            // Sync authoritative balance from server
-            setCandyBalance(validation.candyBalance);
+            // Sync authoritative balance from server and refresh token
+            setCandyBalance(validation.candyBalance, validation.balanceToken);
             console.log('[App] Resumed session:', session);
           }
         } catch (error) {
           console.error('[App] Session validation failed:', error);
-          // Create new session on error, carrying over persisted balance
-          const response = await createSession({ claimedBalance: get(candies) });
+          // Create new session on error
+          const response = await createSession({ balanceToken: get(balanceToken) });
           sessionId.set(response.sessionId);
-          setCandyBalance(response.candyBalance);
+          setCandyBalance(response.candyBalance, response.balanceToken);
           session = response.sessionId;
         }
       }

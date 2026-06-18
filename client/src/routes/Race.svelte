@@ -504,7 +504,11 @@
   let mountedBet    = null;
 
   onMount(() => {
-    if ($monsters.length === 0) {
+    const srs = get(serverRaceState);
+
+    // Never animate without the server's authoritative rankings (sent once the
+    // race is running) — a locally rolled winner could contradict the real result.
+    if ($monsters.length === 0 || !srs.rankings?.length) {
       push('/');
       return;
     }
@@ -516,8 +520,6 @@
     raceMonsters.forEach((m, i) => {
       glyphMap[m.id] = HORROR_GLYPHS[i % HORROR_GLYPHS.length];
     });
-
-    const srs = get(serverRaceState);
     mountedRaceId = srs.raceId;
     mountedBet    = get(currentBet);
     const serverRankings = srs.rankings;
@@ -527,7 +529,7 @@
     // If we joined mid-race, offset startTime so progress begins at the right point.
     const elapsed = srs.raceStartedAt ? Math.max(0, Date.now() - srs.raceStartedAt) : 0;
 
-    raceData = simulateRace(raceMonsters, raceDuration, serverRankings.length > 0 ? serverRankings : null);
+    raceData = simulateRace(raceMonsters, raceDuration, serverRankings);
     winner = raceData.winner;
     runawayId    = raceData.outliers.runawayId;
     stragglerIId = raceData.outliers.stragglerI;
@@ -629,16 +631,18 @@
         validationResult = validation;
 
         if (validation.valid) {
-          winner = validation.winner;
-          syncBalanceFromPayout(validation.candyBalance);
+          // Keep the local server-derived winner if the response omits one
+          // (e.g. the race is no longer retrievable server-side)
+          if (validation.winner) winner = validation.winner;
+          syncBalanceFromPayout(validation.candyBalance, validation.balanceToken);
 
-          const sortedMonsters = validation.rankings
+          const sortedMonsters = validation.rankings?.length
             ? validation.rankings.map(r => r.monster)
-            : raceMonsters;
+            : raceData.rankings.map(r => r.monster);
 
           addRaceToHistory({
             monsters: sortedMonsters,
-            winner: validation.winner,
+            winner,
             bet: validation.bet,
             won: validation.won,
             payout: validation.payout,
@@ -657,15 +661,13 @@
       if (bet) clearBet(); // stale bet from a previous race — clear it without deducting
       isValidating = false;
       validationResult = { won: false };
-      const raceWinner = raceState.winner || winner;
 
-      const sortedMonsters = raceState.rankings?.length
-        ? raceState.rankings.map(r => r.monster)
-        : raceMonsters;
-
+      // raceData was seeded from the server's rankings at mount, so the local
+      // winner and order ARE the authoritative result — and unlike the live
+      // store, they can't have been overwritten by the next race's payload.
       addRaceToHistory({
-        monsters: sortedMonsters,
-        winner: raceWinner,
+        monsters: raceData.rankings.map(r => r.monster),
+        winner,
         bet: null,
         won: false,
         payout: 0,

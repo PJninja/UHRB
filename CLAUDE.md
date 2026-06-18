@@ -55,6 +55,18 @@ node server/scripts/simulate.js --races 1000 --format csv  --output results.csv
 
 **When to use:** after changing `calculateOdds`, `calculatePerformance`, `generateRaceMonsters`, or any stat/value weights. Unit tests verify correctness of individual functions; the simulator catches balance issues that only emerge at scale — win-rate distributions, dynasty streaks, odds clustering, and stat dominance.
 
+### E2E candy-flow check (`/server/scripts/e2e-candy-check.mjs`)
+
+Exercises the full betting/payout flow against a live `TEST_MODE` server: session creation, hidden-field leak check, invalid/duplicate bet rejection, race advance, server-side payout resolution, idempotent validate, and balance-token round-trip.
+
+```bash
+# Terminal 1: TEST_MODE=true PORT=3999 node server/src/index.js
+# Terminal 2:
+node server/scripts/e2e-candy-check.mjs http://localhost:3999
+```
+
+**When to use:** after changing bet/payout endpoints, `raceScheduler` lifecycle, or `sessionManager` balance logic.
+
 ## Architecture
 
 The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fastify REST API (`/server`). They communicate via WebSocket (real-time push) and REST calls.
@@ -92,12 +104,12 @@ The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fa
 - **`config.js`** — centralised config (PORT, HOST, CORS_ORIGIN, SESSION_TTL_MS, LOG_LEVEL)
 - **`/routes/rest.js`** — REST handlers: `GET /api/session`, `POST /api/session` (20/min), `GET /api/session/:id/validate`, `GET /api/race/current`, `POST /api/race/:raceId/bet` (60/min), `POST /api/race/:raceId/payout/validate` (60/min); write endpoints have per-route rate limits tighter than the global
 - **`/routes/ws.js`** — WebSocket handler at `/ws`; registers/removes clients via broadcaster; sends current race state on connect
-- **`/services/raceScheduler.js`** — owns the race lifecycle state machine (`waiting` → `racing` → `finished`); schedules next race; exports `sanitizeMonster` (strips `value`, `description`, `blurb`, `height`, `weight`, `features`; adds `isReturningChampion`, `audienceFavor`, `bodyTypeLetter`) and `racePayload` (includes `winner` + `rankings` once racing, so client visuals match server outcome); bet-total broadcasts are debounced 300ms; `BETTING_CLOSE_BEFORE_MS = 5000`
+- **`/services/raceScheduler.js`** — owns the race lifecycle state machine (`waiting` → `racing` → `finished`); schedules next race; all phase timers are stored and cleared via `clearLifecycleTimers()`, and `startRace`/`finishRace` carry state guards so a stale timer can never fire against the wrong race; `finishRace` calls `resolveRaceBets` (sessionManager) so every pending bet is credited server-side at race finish — payouts never depend on the client calling the validate endpoint; exports `sanitizeMonster` (strips `value`, `description`, `blurb`, `height`, `weight`, `features`; adds `isReturningChampion` — stamped on monsters at schedule time, `audienceFavor`, `bodyTypeLetter`) and `racePayload` (includes `winner` + `rankings` once racing, so client visuals match server outcome); bet-total broadcasts are debounced 300ms; `BETTING_CLOSE_BEFORE_MS = 5000`
 - **`/services/raceSimulator.js`** — **server-authoritative** outcome; seeded RNG for deterministic results; race duration 20–30s; `calculatePerformance` weights: speed×2.5, endurance×1.5, luck×1.5, strength×1.0; madness governs chaos variance only (not power); odds = 70% stats + 30% value (high value = crowd favorite = lower return); legendaries capped at 1.5×; audienceFavor tier is derived from the blended odds (not value alone), so stat total and value both influence the displayed crowd sentiment
 - **`/services/monsterGenerator.js`** — seeded monster generation; text entries are `{ text, letter }` pairs; stats derived by counting letters across all selected texts; exposes `bodyTypeLetter` on the monster object (passed through by `sanitizeMonster`)
 - **`/services/broadcaster.js`** — WebSocket broadcaster; Set of sockets; stale sockets (throw on send) auto-removed; `WS_OPEN = 1` constant
-- **`/services/payoutValidator.js`** — anti-cheat: recomputes payout as `bet × odds`; value is already baked into odds (no separate multiplier)
-- **`/state/sessionManager.js`** — in-memory session store with 24-hour TTL; expired sessions purged on hourly background interval (not on-read)
+- **`/services/payoutValidator.js`** — anti-cheat fallback: recomputes payout as `bet × odds` for a still-pending bet (value is already baked into odds, no separate multiplier). In the normal flow bets are already resolved by `resolveRaceBets` at race finish; the payout/validate endpoint then returns the session's stored `lastBetResult` (idempotent — repeat calls never re-credit)
+- **`/state/sessionManager.js`** — in-memory session store with 24-hour TTL; expired sessions purged on hourly background interval (not on-read); `resolveRaceBets(raceId, winnerId, odds)` credits winners/applies the mercy floor and records `lastBetResult` per session; balances carry across sessions only via HMAC-signed balance tokens (`/utils/balanceToken.js`, secret from `BALANCE_TOKEN_SECRET`) — raw client-claimed balances are never trusted
 - **`/data/bioData.js`** — descriptions, blurbs, racingStyles; entries are `{ text, letter }`; text uses RichText tags matching the stat contribution
 - **`/data/appearanceData.js`** — bodyTypes, distinctiveFeatures, temperaments; same `{ text, letter }` format with RichText tags
 - **`/data/nameData.js`** — namePrefixes, nameSuffixes, locations (cosmetic only, no mechanical effect)
@@ -111,7 +123,7 @@ The app is two separate Node.js projects — a Svelte 5 SPA (`/client`) and a Fa
 - **No stat numbers are ever shown.** The Bio page uses prose, RichText effects, and a **Field Classification** card (two alchemical symbols: power tier + dominant stat; plus a Class Level letter from `bodyTypeLetter`) to let players infer stat strength without displaying digits. Players decode the symbol system empirically by cross-referencing the bio with race outcomes over time.
 - **Text entries encode stats:** every catalog entry is `{ text, letter }` where letter ∈ {A=Speed, C=Endurance, G=Madness, T=Strength}. RichText tags in entry text visually reinforce the stat category: A→`<glow>`, C→`<ancient>`, G→`<madness>`, T→`<blood>`. **Luck is not letter-encoded** — it is derived from letter *variety*: the count of unique letters across all selected entries (1–4 for generated monsters). Higher variety = higher luck. Luck has a 1.5× weight in `calculatePerformance` and is included in the odds win-probability sum; it is a real mechanical stat, not cosmetic.
 - **Two-simulation architecture:** the server computes the authoritative winner (seeded RNG); the client runs a visual-only simulation using `serverRankings` from the WebSocket payload to guarantee the visual outcome matches the server result.
-- **All bet validation happens server-side.** The payout validator endpoint exists specifically to prevent client-side cheating.
+- **All bet validation happens server-side.** Bet amounts must be positive integers; duplicate bets on the same race are rejected (409). Payouts are resolved server-side at race finish (`resolveRaceBets`); the payout/validate endpoint reports the stored result and exists to sync the client, not to create candy.
 - **No database** — all state is in-memory. Sessions expire after 24 hours (configurable via `SESSION_TTL_MS`). History is persisted in localStorage (last 50 races).
 
 ## Environment Variables
@@ -178,7 +190,7 @@ LOG_LEVEL=warn    # minimal — warnings and errors only
 
 ## Tests
 
-Both packages use **Vitest 2.x**. 161 tests total — no running server, no ports, no network calls required.
+Both packages use **Vitest 2.x**. 229 tests total — no running server, no ports, no network calls required.
 
 | Suite | Config | Test files |
 |---|---|---|
@@ -191,8 +203,8 @@ Both packages use **Vitest 2.x**. 161 tests total — no running server, no port
 test.bat            # Run all suites, pause to read results (Windows)
 test.bat --ci       # Run all suites without pausing (any arg skips pause)
 
-cd server && npm test            # Server tests only (117 tests)
-cd client && npm test           # Frontend tests only (44 tests)
+cd server && npm test            # Server tests only (179 tests)
+cd client && npm test           # Frontend tests only (50 tests)
 cd client && npm run test:watch # Watch mode for active development
 ```
 

@@ -13,25 +13,28 @@ const sessions = new Map();
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Purge expired sessions on a background interval rather than on every read.
+// unref() so the interval never keeps the process (or test runner) alive.
 setInterval(() => {
   const now = Date.now();
   for (const [id, session] of sessions) {
     if (now > session.expiresAt) sessions.delete(id);
   }
-}, 60 * 60 * 1000); // every hour
+}, 60 * 60 * 1000).unref?.();
 
 /**
- * Create a new anonymous session
- * @param {number} [claimedBalance] - Optional balance hint from client localStorage fallback
+ * Create a new anonymous session.
+ * @param {number} [verifiedBalance] - Pre-verified balance from a signed token. When
+ *   omitted or invalid the session starts at config.startingBalance. Raw client input
+ *   must never be passed here directly — verify it with verifyToken() first.
  * @returns {object} Session object with id, expiry, and starting balance
  */
-export function createSession(claimedBalance) {
+export function createSession(verifiedBalance) {
   const sessionId = `session_${nanoid()}`;
   const now = Date.now();
 
-  const validClaim = Number.isFinite(claimedBalance) && claimedBalance > 0;
-  const candyBalance = validClaim
-    ? Math.min(Math.floor(claimedBalance), config.maxClaimedBalance)
+  const valid = Number.isFinite(verifiedBalance) && verifiedBalance > 0;
+  const candyBalance = valid
+    ? Math.min(Math.floor(verifiedBalance), config.maxClaimedBalance)
     : config.startingBalance;
 
   const session = {
@@ -194,6 +197,58 @@ export function refundBet(sessionId, amount) {
 export function getBalance(sessionId) {
   const session = getSession(sessionId);
   return session ? session.candyBalance : null;
+}
+
+/**
+ * Resolve every pending bet for a finished race. Credits winners (bet × odds,
+ * floored), applies the mercy floor, records the outcome on the session, and
+ * clears the bet. Called from the race scheduler at race finish so payouts
+ * never depend on the client calling the validate endpoint in time.
+ * @param {string} raceId
+ * @param {string} winnerId
+ * @param {Object<string, number>} odds - monsterId → odds multiplier
+ * @returns {number} Number of bets resolved
+ */
+export function resolveRaceBets(raceId, winnerId, odds) {
+  let resolved = 0;
+  const now = Date.now();
+
+  for (const [id, session] of sessions) {
+    if (now > session.expiresAt) continue;
+    const bet = session.currentBet;
+    if (!bet || bet.raceId !== raceId) continue;
+
+    const won = bet.monsterId === winnerId;
+    const betOdds = odds[bet.monsterId] || 1.5;
+    const payout = won ? Math.floor(bet.amount * betOdds) : 0;
+
+    session.candyBalance = Math.max(session.candyBalance + payout, config.mercyBalance);
+    session.lastBetResult = {
+      raceId,
+      monsterId: bet.monsterId,
+      amount: bet.amount,
+      odds: betOdds,
+      won,
+      payout,
+      resolvedAt: now,
+    };
+    session.currentBet = null;
+    resolved++;
+
+    log.info({ sessionId: id, raceId, won, payout, candyBalance: session.candyBalance }, 'bet resolved at race finish');
+  }
+
+  return resolved;
+}
+
+/**
+ * Get the most recently resolved bet result for a session.
+ * @param {string} sessionId
+ * @returns {object|null} { raceId, monsterId, amount, odds, won, payout } or null
+ */
+export function getLastBetResult(sessionId) {
+  const session = getSession(sessionId);
+  return session ? (session.lastBetResult ?? null) : null;
 }
 
 /**

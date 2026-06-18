@@ -1,7 +1,8 @@
 // REST API routes
-import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet, getCurrentBet, refundBet } from '../state/sessionManager.js';
-import { getCurrentRace, isBettingAllowed, addBetToTotal, decrementBetTotal, racePayload } from '../services/raceScheduler.js';
+import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet, getCurrentBet, refundBet, getLastBetResult } from '../state/sessionManager.js';
+import { getCurrentRace, getLastFinishedRace, isBettingAllowed, addBetToTotal, decrementBetTotal, racePayload, sanitizeMonster } from '../services/raceScheduler.js';
 import { validatePayout } from '../services/payoutValidator.js';
+import { issueToken, verifyToken } from '../utils/balanceToken.js';
 
 /**
  * Register REST API routes
@@ -15,13 +16,17 @@ export async function registerRestRoutes(fastify) {
 
   // Create a new anonymous session
   fastify.post('/api/session', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const { claimedBalance } = request.body ?? {};
-    const session = createSession(claimedBalance);
+    const { balanceToken } = request.body ?? {};
+    // Only honour a balance carried over from a previous session if the client
+    // presents a valid server-issued signed token — never trust raw numbers.
+    const verifiedBalance = verifyToken(balanceToken);
+    const session = createSession(verifiedBalance ?? undefined);
 
     return {
       sessionId: session.sessionId,
       expiresAt: session.expiresAt,
       candyBalance: session.candyBalance,
+      balanceToken: issueToken(session.candyBalance),
     };
   });
 
@@ -32,9 +37,11 @@ export async function registerRestRoutes(fastify) {
     const isValid = validateSession(sessionId);
     const session = isValid ? getSession(sessionId) : null;
 
+    const balance = isValid ? getBalance(sessionId) : null;
     return {
       valid: isValid,
-      candyBalance: isValid ? getBalance(sessionId) : null,
+      candyBalance: balance,
+      balanceToken: isValid ? issueToken(balance) : null,
       session: session ? {
         id: session.id,
         connectedAt: session.connectedAt,
@@ -110,11 +117,26 @@ export async function registerRestRoutes(fastify) {
       });
     }
 
-    // Validate amount
-    if (amount < 1) {
+    // Validate amount — must be a finite positive integer (rejects floats,
+    // numeric strings, NaN, Infinity, which would corrupt the candy balance)
+    if (!Number.isInteger(amount) || amount < 1) {
       return reply.code(400).send({
-        error: 'Bet amount must be at least 1',
+        error: 'Bet amount must be a positive integer',
       });
+    }
+
+    // Reject duplicate bets — a second deduction would orphan the first stake
+    const existingBet = getCurrentBet(sessionId);
+    if (existingBet && existingBet.raceId === raceId) {
+      return reply.code(409).send({
+        error: 'Bet already placed for this race — cancel it first',
+      });
+    }
+    // A leftover bet for a different race means that race never resolved
+    // (e.g. discarded via test reset) — refund it before accepting a new bet
+    if (existingBet) {
+      refundBet(sessionId, existingBet.amount);
+      clearBet(sessionId);
     }
 
     // Deduct bet from server-side balance
@@ -128,6 +150,8 @@ export async function registerRestRoutes(fastify) {
     const success = storeBet(sessionId, raceId, monsterId, amount);
 
     if (!success) {
+      // Deduction already happened — give the candy back before failing
+      refundBet(sessionId, amount);
       return reply.code(500).send({
         error: 'Failed to store bet',
       });
@@ -140,6 +164,7 @@ export async function registerRestRoutes(fastify) {
       success: true,
       bet: { raceId, monsterId, amount },
       candyBalance: deduction.candyBalance,
+      balanceToken: issueToken(deduction.candyBalance),
     };
   });
 
@@ -162,7 +187,35 @@ export async function registerRestRoutes(fastify) {
       });
     }
 
-    // Validate payout
+    const sanitizeRankings = rankings =>
+      (rankings || []).map(r => ({ position: r.position, monster: sanitizeMonster(r.monster) }));
+
+    // Bets are resolved server-side at race finish. If this session's bet for
+    // the requested race was already resolved, return the stored result —
+    // idempotent and immune to double-crediting.
+    const stored = getLastBetResult(sessionId);
+    if (stored && stored.raceId === raceId) {
+      const live = getCurrentRace();
+      const last = getLastFinishedRace();
+      const race = live?.id === raceId ? live : (last?.id === raceId ? last : null);
+      const candyBalance = getBalance(sessionId);
+
+      return {
+        valid: true,
+        won: stored.won,
+        winner: race?.winner ? sanitizeMonster(race.winner) : null,
+        rankings: sanitizeRankings(race?.rankings),
+        odds: stored.odds,
+        payout: stored.payout,
+        bet: { raceId: stored.raceId, monsterId: stored.monsterId, amount: stored.amount },
+        error: null,
+        candyBalance,
+        balanceToken: issueToken(candyBalance),
+      };
+    }
+
+    // Fallback: bet not yet resolved (e.g. validate called in the brief window
+    // before race finish processing) — resolve it here
     const result = validatePayout(sessionId, bet);
 
     let candyBalance = getBalance(sessionId);
@@ -175,13 +228,14 @@ export async function registerRestRoutes(fastify) {
     return {
       valid: result.valid,
       won: result.won,
-      winner: result.winner,
-      rankings: result.rankings,
+      winner: result.winner ? sanitizeMonster(result.winner) : null,
+      rankings: sanitizeRankings(result.rankings),
       odds: result.odds,
       payout: result.payout,
       bet: result.bet,
       error: result.error,
       candyBalance,
+      balanceToken: issueToken(candyBalance),
     };
   });
 
@@ -255,6 +309,7 @@ export async function registerRestRoutes(fastify) {
       success: true,
       refunded: currentBet.amount,
       candyBalance: refund.candyBalance,
+      balanceToken: issueToken(refund.candyBalance),
     };
   });
 }

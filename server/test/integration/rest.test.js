@@ -20,6 +20,9 @@ vi.mock('../../src/services/broadcaster.js', () => ({ broadcast: vi.fn() }));
 
 import { buildApp } from '../../src/app.js';
 import { getCurrentRace, isBettingAllowed, racePayload } from '../../src/services/raceScheduler.js';
+import { issueToken } from '../../src/utils/balanceToken.js';
+// Real (unmocked) sessionManager — used to set up server-side state directly
+import { storeBet as storeBetDirect, deductBet as deductBetDirect, resolveRaceBets } from '../../src/state/sessionManager.js';
 
 const RACE_ID = 'race-test-001';
 const MONSTER_A = {
@@ -103,20 +106,35 @@ describe('POST /api/session', () => {
     expect(res.json().candyBalance).toBe(100);
   });
 
-  it('uses a claimedBalance hint when provided', async () => {
+  it('restores balance from a valid signed balanceToken', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/session',
-      payload: { claimedBalance: 750 },
+      payload: { balanceToken: issueToken(750) },
     });
     expect(res.json().candyBalance).toBe(750);
   });
 
-  it('caps claimedBalance at 1,000,000', async () => {
+  it('caps restored balance at 1,000,000 even with a valid token', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/session',
-      payload: { claimedBalance: 9999999 },
+      payload: { balanceToken: issueToken(9999999) },
     });
     expect(res.json().candyBalance).toBe(1000000);
+  });
+
+  it('ignores a tampered balanceToken and starts fresh', async () => {
+    const token = issueToken(750);
+    const tampered = token.slice(0, -4) + 'xxxx';
+    const res = await app.inject({
+      method: 'POST', url: '/api/session',
+      payload: { balanceToken: tampered },
+    });
+    expect(res.json().candyBalance).toBe(100);
+  });
+
+  it('returns a balanceToken in the response', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/session' });
+    expect(typeof res.json().balanceToken).toBe('string');
   });
 });
 
@@ -332,6 +350,56 @@ describe('POST /api/race/:raceId/bet', () => {
     });
     expect(res.statusCode).toBe(402);
   });
+
+  it('returns 400 for non-integer amounts (floats, strings, NaN)', async () => {
+    const sessionId = await createSession();
+    for (const amount of [10.5, '10', Number.NaN, Number.POSITIVE_INFINITY, true]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/race/${RACE_ID}/bet`,
+        payload: betPayload({ sessionId, amount }),
+      });
+      expect(res.statusCode, `amount=${String(amount)}`).toBe(400);
+    }
+  });
+
+  it('returns 409 on a duplicate bet for the same race without deducting twice', async () => {
+    const sessionId = await createSession();
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 30 }),
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().candyBalance).toBe(70);
+
+    const second = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 30, monsterId: MONSTER_B.id }),
+    });
+    expect(second.statusCode).toBe(409);
+
+    // Balance must reflect only the first deduction
+    const validate = await app.inject({ method: 'GET', url: `/api/session/${sessionId}/validate` });
+    expect(validate.json().candyBalance).toBe(70);
+  });
+
+  it('refunds a leftover bet from a dead race before accepting a new bet', async () => {
+    const sessionId = await createSession();
+    // Simulate a bet stuck on a race that never resolved (e.g. discarded race)
+    storeBetDirect(sessionId, 'race-dead', MONSTER_A.id, 40);
+    deductBetDirect(sessionId, 40); // balance → 60
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, amount: 25 }),
+    });
+    expect(res.statusCode).toBe(200);
+    // 100 − 40 (dead bet) + 40 (refund) − 25 (new bet) = 75
+    expect(res.json().candyBalance).toBe(75);
+  });
 });
 
 // ─── POST /api/race/:raceId/payout/validate ───────────────────────────────────
@@ -526,6 +594,42 @@ describe('POST /api/race/:raceId/payout/validate', () => {
     expect(second.json().candyBalance).toBe(175);
   });
 
+  it('returns the stored result when the bet was resolved at race finish', async () => {
+    const finishedRace = waitingRace({
+      state: 'finished',
+      winner: MONSTER_A,
+      rankings: [{ position: 1, monster: MONSTER_A }, { position: 2, monster: MONSTER_B }],
+    });
+
+    const sessionId = await createSession();
+    await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/bet`,
+      payload: { sessionId, monsterId: MONSTER_A.id, amount: 50 },
+    });
+
+    // Simulate the scheduler resolving bets at race finish (server-side payout)
+    resolveRaceBets(RACE_ID, MONSTER_A.id, finishedRace.odds);
+    getCurrentRace.mockReturnValue(finishedRace);
+
+    const first = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_A.id, amount: 50 } },
+    });
+    const second = await app.inject({
+      method: 'POST', url: `/api/race/${RACE_ID}/payout/validate`,
+      payload: { sessionId, bet: { monsterId: MONSTER_A.id, amount: 50 } },
+    });
+
+    // Resolution credited 50 × 2.5 = 125 onto the post-bet balance of 50
+    expect(first.json().won).toBe(true);
+    expect(first.json().payout).toBe(125);
+    expect(first.json().candyBalance).toBe(175);
+    expect(first.json().winner.id).toBe(MONSTER_A.id);
+    // Idempotent: a repeat call reports the same result without re-crediting
+    expect(second.json().candyBalance).toBe(175);
+    expect(second.json().payout).toBe(125);
+  });
+
   it('does not apply mercy floor when a player with no bet calls payout validate', async () => {
     getCurrentRace.mockReturnValue(waitingRace({
       state: 'finished',
@@ -536,7 +640,7 @@ describe('POST /api/race/:raceId/payout/validate', () => {
     // Create a session with a low balance but place no bet
     const sessionId = (await app.inject({
       method: 'POST', url: '/api/session',
-      payload: { claimedBalance: 5 },
+      payload: { balanceToken: issueToken(5) },
     })).json().sessionId;
 
     const res = await app.inject({

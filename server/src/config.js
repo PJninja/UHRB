@@ -22,6 +22,11 @@ export const config = {
   mercyBalance: 10,
   maxClaimedBalance: 1000000,
 
+  // Balance carry-over tokens (HMAC-SHA256 signed, client-persisted)
+  // Set BALANCE_TOKEN_SECRET to a long random string in production.
+  balanceTokenSecret: process.env.BALANCE_TOKEN_SECRET || 'dev-insecure-secret-change-in-production',
+  balanceTokenMaxAgeMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+
   // Logging
   logLevel: process.env.LOG_LEVEL || 'info',
 

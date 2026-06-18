@@ -1,8 +1,8 @@
 // Game state store (refactored for server synchronization)
 import { writable, derived, get } from 'svelte/store';
 import { persistedStore } from './persistence.js';
-import { placeBet as apiBet, cancelBet as apiCancelBet } from '../services/api.js';
-import { sessionId } from './session.js';
+import { placeBet as apiBet, cancelBet as apiCancelBet, validatePayout as apiValidatePayout } from '../services/api.js';
+import { sessionId, balanceToken } from './session.js';
 
 // Client-managed game state (candies and current bet)
 const initialGameState = {
@@ -35,15 +35,20 @@ export const serverRaceState = writable({
 export function updateServerRaceState(raceData) {
   const state = get(gameState);
 
-  // Auto-clear any stale bet from a previous race when new race data arrives
+  // Auto-clear any stale bet from a previous race when new race data arrives.
+  // The server resolved it at race finish — fetch the result so a credited
+  // payout reaches the local balance even if the player missed the race page.
   if (state.currentBet && state.currentBet.raceId !== raceData.raceId) {
     const staleBet = state.currentBet;
     gameState.update(s => ({ ...s, currentBet: null }));
-    // Fire-and-forget server cleanup (don't await — let polling continue)
     const session = get(sessionId);
-    apiCancelBet(staleBet.raceId, session).catch(() => {
-      // Server may reject (race already started/finished) — acceptable
-    });
+    apiValidatePayout(staleBet.raceId, session, staleBet)
+      .then(r => {
+        if (typeof r.candyBalance === 'number') setCandyBalance(r.candyBalance, r.balanceToken);
+      })
+      .catch(() => {
+        // Server may not know this race anymore — balance syncs on next bet/validate
+      });
   }
 
   serverRaceState.set({
@@ -92,7 +97,7 @@ export async function placeBet(monsterId, amount) {
 
   try {
     const response = await apiBet(raceState.raceId, session, monsterId, amount);
-    setCandyBalance(response.candyBalance);
+    setCandyBalance(response.candyBalance, response.balanceToken);
   } catch (error) {
     console.error('Server bet failed:', error);
     clearBet();
@@ -127,8 +132,7 @@ export async function clearBet() {
 
   try {
     const response = await apiCancelBet(bet.raceId, session);
-    // Sync balance from server response
-    setCandyBalance(response.candyBalance);
+    setCandyBalance(response.candyBalance, response.balanceToken);
   } catch (error) {
     console.error('Failed to cancel bet on server:', error);
     // Re-instate the bet if server call failed AND bet is for current race
@@ -142,18 +146,23 @@ export async function clearBet() {
 
 /**
  * Overwrite the local candy balance with the server-authoritative value.
+ * Also persists the signed token so the next session creation can carry it over.
  * @param {number} balance
+ * @param {string} [token] - Server-issued balance token
  */
-export function setCandyBalance(balance) {
+export function setCandyBalance(balance, token) {
   gameState.update(s => ({ ...s, candies: balance }));
+  if (token) balanceToken.set(token);
 }
 
 /**
  * Sync candy balance from a server payout response and clear the active bet.
  * @param {number} serverBalance - Authoritative balance returned by the server
+ * @param {string} [token] - Server-issued balance token
  */
-export function syncBalanceFromPayout(serverBalance) {
+export function syncBalanceFromPayout(serverBalance, token) {
   gameState.update(s => ({ ...s, candies: serverBalance, currentBet: null }));
+  if (token) balanceToken.set(token);
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   createSession, getSession, validateSession,
   storeBet, getCurrentBet, clearBet,
   getActiveSessions, deductBet, creditPayout, getBalance, refundBet,
+  resolveRaceBets, getLastBetResult,
 } from '../src/state/sessionManager.js';
 import { config } from '../src/config.js';
 
@@ -269,5 +270,105 @@ describe('refundBet', () => {
     const result = refundBet('session_ghost', 50);
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('session_not_found');
+  });
+});
+
+// ─── resolveRaceBets ──────────────────────────────────────────────────────────
+
+describe('resolveRaceBets', () => {
+  const RACE = 'race-resolve-1';
+  const ODDS = { 'monster-w': 3.2, 'monster-l': 2.0 };
+
+  it('credits a winning bet at bet × odds (floored) and clears it', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 25);                            // balance → 75
+    storeBet(sessionId, RACE, 'monster-w', 25);
+
+    const resolved = resolveRaceBets(RACE, 'monster-w', ODDS);
+
+    expect(resolved).toBe(1);
+    expect(getBalance(sessionId)).toBe(75 + Math.floor(25 * 3.2)); // 155
+    expect(getCurrentBet(sessionId)).toBeNull();
+  });
+
+  it('records the result retrievably via getLastBetResult', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 25);
+    storeBet(sessionId, RACE, 'monster-w', 25);
+
+    resolveRaceBets(RACE, 'monster-w', ODDS);
+
+    const result = getLastBetResult(sessionId);
+    expect(result).toMatchObject({
+      raceId: RACE,
+      monsterId: 'monster-w',
+      amount: 25,
+      odds: 3.2,
+      won: true,
+      payout: Math.floor(25 * 3.2),
+    });
+  });
+
+  it('pays nothing on a losing bet but applies the mercy floor', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 95);                            // balance → 5 (below mercy)
+    storeBet(sessionId, RACE, 'monster-l', 95);
+
+    resolveRaceBets(RACE, 'monster-w', ODDS);
+
+    expect(getLastBetResult(sessionId).won).toBe(false);
+    expect(getLastBetResult(sessionId).payout).toBe(0);
+    expect(getBalance(sessionId)).toBe(config.mercyBalance);
+    expect(getCurrentBet(sessionId)).toBeNull();
+  });
+
+  it('ignores bets placed on a different race', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 10);
+    storeBet(sessionId, 'race-other', 'monster-w', 10);
+
+    const resolved = resolveRaceBets(RACE, 'monster-w', ODDS);
+
+    expect(resolved).toBe(0);
+    expect(getCurrentBet(sessionId)).not.toBeNull();
+    expect(getBalance(sessionId)).toBe(90);
+  });
+
+  it('uses the default 1.5 odds when the monster has no odds entry', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 20);                            // balance → 80
+    storeBet(sessionId, RACE, 'monster-x', 20);
+
+    resolveRaceBets(RACE, 'monster-x', {});
+
+    expect(getBalance(sessionId)).toBe(80 + Math.floor(20 * 1.5)); // 110
+  });
+
+  it('resolves multiple sessions in one pass', () => {
+    const a = createSession();
+    const b = createSession();
+    deductBet(a.sessionId, 10);
+    deductBet(b.sessionId, 10);
+    storeBet(a.sessionId, RACE, 'monster-w', 10);
+    storeBet(b.sessionId, RACE, 'monster-l', 10);
+
+    const resolved = resolveRaceBets(RACE, 'monster-w', ODDS);
+
+    expect(resolved).toBe(2);
+    expect(getBalance(a.sessionId)).toBe(90 + Math.floor(10 * 3.2));
+    expect(getBalance(b.sessionId)).toBe(90);
+  });
+});
+
+// ─── getLastBetResult ─────────────────────────────────────────────────────────
+
+describe('getLastBetResult', () => {
+  it('returns null when no bet has been resolved', () => {
+    const { sessionId } = createSession();
+    expect(getLastBetResult(sessionId)).toBeNull();
+  });
+
+  it('returns null for an unknown session', () => {
+    expect(getLastBetResult('session_ghost')).toBeNull();
   });
 });

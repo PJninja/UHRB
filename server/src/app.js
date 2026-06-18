@@ -32,7 +32,7 @@ export async function buildApp(opts = {}) {
       global: true,
       max: 300,
       timeWindow: '1 minute',
-      keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0].trim() ?? req.ip,
+      keyGenerator: (req) => req.ip,
     });
   }
 
