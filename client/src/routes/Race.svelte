@@ -1420,18 +1420,64 @@
       padding: 1rem;
     }
 
+    /* Shrink every lane to roughly half height so all horrors have a
+       shot at fitting on screen at once without scrolling. */
+    .race-track {
+      gap: 0.5rem;
+    }
+
     .race-lane {
-      grid-template-columns: 44px 1fr;
+      grid-template-columns: 30px 1fr;
       grid-template-rows: auto auto;
+      border-width: 2px;
     }
 
     .horror-info {
       border-right: none;
       border-bottom: 2px solid var(--border-ancient);
+      min-height: 34px;
+      padding: 0.35rem 0.5rem;
+      gap: 0.1rem;
+    }
+
+    .horror-name {
+      font-size: 0.75rem;
+      gap: 0.25rem;
+    }
+
+    .horror-bets {
+      font-size: 0.55rem;
+    }
+
+    .rank-badge {
+      min-height: 34px;
+      font-size: 0.55rem;
     }
 
     .track {
       grid-column: 1 / -1;
+    }
+
+    .track-inner {
+      height: 34px;
+    }
+
+    .horror-glyph {
+      font-size: 1rem;
+    }
+
+    .race-lane.finished .horror-glyph.finished-glyph {
+      font-size: 0.9rem;
+    }
+
+    .finish-line {
+      width: 16px;
+      min-height: 34px;
+    }
+
+    .finish-label {
+      font-size: 0.4rem;
+      letter-spacing: 1px;
     }
 
     .finish-banner {

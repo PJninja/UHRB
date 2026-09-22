@@ -8,10 +8,17 @@
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import BettingSlip from '../lib/components/BettingSlip.svelte';
   import CrowdWagerBar from '../lib/components/CrowdWagerBar.svelte';
+  import RichText from '../lib/components/RichText.svelte';
 
   let selectedMonster = null;
   let canvas;
   let raf;
+  let tocOpen = false;
+
+  function scrollToMonster(id) {
+    document.getElementById(`monster-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    tocOpen = false;
+  }
 
   const RUNES = ['ᛟ', 'ᛦ', 'ᛏ', 'ᚦ', 'ᚷ', 'ᚱ', 'ᚢ', 'ᚠ', 'ᛁ', 'ᛃ', 'ᛇ', 'ᛈ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛒ', 'ᛖ', 'ᛗ'];
   const COUNT = 60;
@@ -105,15 +112,17 @@
 
         <div class="monsters-grid">
           {#each $monsters as monster}
-            <MonsterCard
-              {monster}
-              compact={true}
-              selected={monster.id === selectedMonster?.id}
-              hasBet={validBet !== null && monster.id === validBet.monsterId}
-              betTotal={$serverRaceState.betTotals?.[monster.id] || 0}
-              onSelect={handleSelectMonster}
-              disabled={validBet !== null && monster.id !== validBet.monsterId}
-            />
+            <div id="monster-{monster.id}">
+              <MonsterCard
+                {monster}
+                compact={true}
+                selected={monster.id === selectedMonster?.id}
+                hasBet={validBet !== null && monster.id === validBet.monsterId}
+                betTotal={$serverRaceState.betTotals?.[monster.id] || 0}
+                onSelect={handleSelectMonster}
+                disabled={validBet !== null && monster.id !== validBet.monsterId}
+              />
+            </div>
           {/each}
         </div>
       </div>
@@ -123,6 +132,33 @@
       </aside>
     </div>
   </div>
+
+  <button
+    class="horror-toc-toggle"
+    aria-label="Jump to a horror"
+    aria-expanded={tocOpen}
+    on:click={() => (tocOpen = !tocOpen)}
+  >
+    <span class="bar"></span>
+    <span class="bar"></span>
+    <span class="bar"></span>
+  </button>
+
+  {#if tocOpen}
+    <button class="toc-backdrop" aria-label="Close horror list" on:click={() => (tocOpen = false)}></button>
+    <nav class="horror-toc">
+      <h3 class="toc-title">Jump to Horror</h3>
+      <ul>
+        {#each $monsters as monster}
+          <li>
+            <button class="toc-item" on:click={() => scrollToMonster(monster.id)}>
+              <RichText text={monster.name} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </nav>
+  {/if}
 </div>
 
 <style>
@@ -225,5 +261,97 @@
     .betting-section {
       order: -1;
     }
+  }
+
+  /* ── Mobile: jump-to-horror table of contents ───────── */
+  .horror-toc-toggle {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    .horror-toc-toggle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      position: fixed;
+      right: 1.25rem;
+      bottom: 1.25rem;
+      width: 52px;
+      height: 52px;
+      background: var(--bg-card);
+      border: 3px solid var(--border-ancient);
+      cursor: pointer;
+      z-index: 40;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .horror-toc-toggle .bar {
+      width: 22px;
+      height: 2px;
+      background: var(--text-accent);
+    }
+  }
+
+  .toc-backdrop {
+    position: fixed;
+    inset: 0;
+    padding: 0;
+    border: none;
+    background: rgba(6, 4, 8, 0.7);
+    cursor: default;
+    z-index: 45;
+  }
+
+  .horror-toc {
+    position: fixed;
+    right: 1rem;
+    bottom: 5.25rem;
+    width: min(280px, calc(100vw - 2rem));
+    max-height: 60vh;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 3px solid var(--border-ancient);
+    padding: 1rem;
+    z-index: 46;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+  }
+
+  .toc-title {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .horror-toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .toc-item {
+    width: 100%;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-ancient);
+    color: var(--text-primary);
+    padding: 0.5rem 0.75rem;
+    font-family: 'Cinzel', serif;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+
+  .toc-item:hover,
+  .toc-item:active {
+    border-color: var(--candy-color);
+    color: var(--candy-color);
   }
 </style>
