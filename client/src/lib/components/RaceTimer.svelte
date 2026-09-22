@@ -154,4 +154,38 @@
       opacity: 0.5;
     }
   }
+
+  /* ── Mobile: pin to the top of the screen on scroll, shrunk 20% ──── */
+  @media (max-width: 768px) {
+    .race-timer {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      gap: 1.2rem;
+      padding: 1.2rem;
+      border-width: 3px;
+      border-bottom-width: 5px;
+    }
+
+    .timer-icon {
+      font-size: 2.4rem;
+    }
+
+    .timer-content {
+      gap: 0.2rem;
+    }
+
+    .timer-label {
+      font-size: 0.6rem;
+    }
+
+    .timer-display {
+      font-size: 2rem;
+      letter-spacing: 3.2px;
+    }
+
+    .urgency-warning {
+      font-size: 0.68rem;
+    }
+  }
 </style>
