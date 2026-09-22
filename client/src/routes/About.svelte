@@ -50,7 +50,7 @@
   .about-page {
     max-width: 480px;
     margin: 0 auto;
-    padding: 2rem 1rem 4rem;
+    padding: 2rem 0.7rem 4rem;
     display: flex;
     flex-direction: column;
     align-items: center;

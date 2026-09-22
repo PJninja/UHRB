@@ -303,7 +303,7 @@
   .bio-page {
     position: relative;
     z-index: 1;
-    padding: 2rem;
+    padding: 2rem 1.4rem;
     max-width: 1100px;
     margin: 0 auto;
   }
@@ -652,7 +652,7 @@
   /* ── Responsive ── */
   @media (max-width: 768px) {
     .bio-page {
-      padding: 1rem;
+      padding: 1rem 0.7rem;
     }
 
     .bio-body {

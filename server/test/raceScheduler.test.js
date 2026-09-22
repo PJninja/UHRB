@@ -19,11 +19,13 @@ vi.mock('../src/utils/random.js', () => ({
   resetSeed: vi.fn(),
   randomInt: vi.fn(),
   rollChance: vi.fn(),
+  selectRandom: vi.fn(arr => arr[0]),
 }));
 
 import { generateRaceMonsters } from '../src/services/monsterGenerator.js';
-import { randomInt, rollChance } from '../src/utils/random.js';
+import { randomInt, rollChance, selectRandom } from '../src/utils/random.js';
 import { scheduleNextRace, getCurrentRace } from '../src/services/raceScheduler.js';
+import { venues } from '../src/data/venueData.js';
 import { config } from '../src/config.js';
 
 function makeMonster(id, value) {
@@ -204,5 +206,46 @@ describe('crowd favorite phantom bets', () => {
     settlePhantomBets(scheduleNextRace());
 
     expect(rollChance).toHaveBeenCalledWith(config.phantomBetSkipChance);
+  });
+});
+
+describe('venues data', () => {
+  it('every venue has the required fields', () => {
+    venues.forEach(venue => {
+      expect(typeof venue.id).toBe('string');
+      expect(typeof venue.name).toBe('string');
+      expect(typeof venue.flavorLine).toBe('string');
+      expect(typeof venue.accent).toBe('string');
+      expect(typeof venue.backdrop).toBe('string');
+    });
+  });
+});
+
+describe('race venue', () => {
+  it('assigns a venue from the venues list to a newly scheduled race', () => {
+    generateRaceMonsters.mockReturnValue([makeMonster('a', 50)]);
+
+    scheduleNextRace();
+
+    const race = getCurrentRace();
+    expect(race.venue).toBeTruthy();
+    expect(venues.map(v => v.id)).toContain(race.venue.id);
+  });
+
+  it('rolls the venue via selectRandom against the full venues list', () => {
+    generateRaceMonsters.mockReturnValue([makeMonster('a', 50)]);
+
+    scheduleNextRace();
+
+    expect(selectRandom).toHaveBeenCalledWith(venues);
+  });
+
+  it('picks the same venue for the same mocked RNG sequence (determinism)', () => {
+    generateRaceMonsters.mockReturnValue([makeMonster('a', 50)]);
+    selectRandom.mockReturnValueOnce(venues[3]);
+
+    scheduleNextRace();
+
+    expect(getCurrentRace().venue).toEqual(venues[3]);
   });
 });

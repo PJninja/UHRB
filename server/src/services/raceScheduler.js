@@ -1,8 +1,9 @@
 // Race lifecycle scheduler - manages the automatic race timer and simulation
 import { nanoid } from 'nanoid';
-import { setSeed, resetSeed, randomInt, rollChance } from '../utils/random.js';
+import { setSeed, resetSeed, randomInt, rollChance, selectRandom } from '../utils/random.js';
 import { config } from '../config.js';
 import { generateRaceMonsters } from './monsterGenerator.js';
+import { venues } from '../data/venueData.js';
 import { simulateRace, calculateOdds } from './raceSimulator.js';
 import { broadcast } from './broadcaster.js';
 import { resolveRaceBets } from '../state/sessionManager.js';
@@ -44,6 +45,9 @@ export function racePayload(race) {
     // can fast-forward to the correct progress when joining mid-race.
     raceDuration: race.raceDuration || null,
     raceStartedAt: race.raceStartedAt || null,
+    // Cosmetic per-race setting — themes the client's backdrop/glow accent and
+    // is shown pre-race and during the race. No mechanical effect whatsoever.
+    venue: race.venue || null,
     // Included once the race is running so the client can drive visuals correctly.
     // Betting is closed by then, so revealing the winner early has no gameplay impact.
     winner: race.winner ? sanitizeMonster(race.winner) : null,
@@ -70,6 +74,7 @@ let currentRace = {
   winner: null,
   rankings: [],
   events: null,
+  venue: null,
   odds: {},
   betTotals: {}, // Track total candies bet on each monster { monsterId: totalAmount }
   bettingClosed: false,
@@ -228,6 +233,10 @@ export function scheduleNextRace() {
   // Calculate odds based on visible stats
   const odds = calculateOdds(monsters);
 
+  // Roll the race's cosmetic venue after odds — appends to the seeded stream
+  // without shifting the draws generateRaceMonsters/calculateOdds already consumed.
+  const venue = selectRandom(venues);
+
   // Reset seed after monster generation
   resetSeed();
 
@@ -251,6 +260,7 @@ export function scheduleNextRace() {
     winner: null,
     rankings: [],
     events: null,
+    venue,
     odds,
     betTotals,
   };

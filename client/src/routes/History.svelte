@@ -180,7 +180,7 @@
 
 <style>
   .history-page {
-    padding: 2rem;
+    padding: 2rem 1.4rem;
     max-width: 1000px;
     margin: 0 auto;
     min-height: 100vh;
@@ -484,6 +484,10 @@
 
   /* ── Responsive ──────────────────────────────────────── */
   @media (max-width: 700px) {
+    .history-page {
+      padding: 1rem 0.7rem;
+    }
+
     .stats-grid {
       grid-template-columns: repeat(2, 1fr);
     }

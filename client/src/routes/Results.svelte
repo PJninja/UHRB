@@ -163,18 +163,19 @@
                 >-0 ✦</span>
               </div>
             </div>
-            {#if latestRace.mercyRescued}
-              <p class="mercy-note">
-                <RichText text="<cosmic>An unseen patron intervenes</cosmic> — a trickle of candies survives the void's claim." />
-              </p>
-            {/if}
           {/if}
           <div class="current-balance">
             <span class="label">Current Balance:</span>
-            <span
-              class="value text-candy"
-              use:countUp={{ from: balanceCountFrom, to: $candies, duration: 1000, suffix: ' ✦' }}
-            >{balanceCountFrom} ✦</span>
+            {#if latestRace.mercyRescued}
+              <span class="value text-candy mercy-value">
+                <RichText text="<cosmic>An unseen patron intervenes</cosmic>" />
+              </span>
+            {:else}
+              <span
+                class="value text-candy"
+                use:countUp={{ from: balanceCountFrom, to: $candies, duration: 1000, suffix: ' ✦' }}
+              >{balanceCountFrom} ✦</span>
+            {/if}
           </div>
         </div>
       {/if}
@@ -258,7 +259,7 @@
 
 <style>
   .results-page {
-    padding: 2rem;
+    padding: 2rem 1.4rem;
     max-width: 900px;
     margin: 0 auto;
     min-height: 100vh;
@@ -520,14 +521,6 @@
     font-size: 1.3rem;
   }
 
-  .mercy-note {
-    margin: 0;
-    font-size: 0.85rem;
-    font-style: italic;
-    color: var(--text-secondary);
-    text-align: center;
-  }
-
   .no-bet-message {
     text-align: center;
     padding: 2rem;
@@ -554,6 +547,12 @@
   .current-balance .value {
     font-weight: 700;
     font-size: 1.3rem;
+  }
+
+  .current-balance .value.mercy-value {
+    font-size: 0.95rem;
+    font-style: italic;
+    font-weight: 400;
   }
 
   .rankings {
@@ -726,6 +725,10 @@
   }
 
   @media (max-width: 768px) {
+    .results-page {
+      padding: 1rem 0.7rem;
+    }
+
     .winner-banner {
       flex-direction: column;
       text-align: center;

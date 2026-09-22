@@ -104,8 +104,6 @@
             <span class="value text-candy">{potentialPayout} ✦</span>
           </div>
         </div>
-      {:else}
-        <p class="no-selection text-muted">Select a horror to begin</p>
       {/if}
 
       <div class="bet-amount-input">
@@ -316,12 +314,6 @@
   .odds-row .value {
     font-weight: 700;
     font-size: 1.1rem;
-  }
-
-  .no-selection {
-    text-align: center;
-    padding: 1rem;
-    font-style: italic;
   }
 
   .bet-amount-input {

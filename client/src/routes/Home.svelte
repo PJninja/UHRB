@@ -14,9 +14,6 @@
   let canvas;
   let raf;
   let tocOpen = false;
-  let bettingSectionEl;
-
-  const MOBILE_BREAKPOINT = 768;
 
   function scrollToMonster(id) {
     document.getElementById(`monster-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -28,12 +25,6 @@
 
   function handleSelectMonster(monster) {
     selectedMonster = monster;
-    // On mobile the betting slip sits above the horror grid (reordered by
-    // the stacked layout) rather than beside it, so it's easy to miss —
-    // scroll it into view whenever a horror is picked.
-    if (window.innerWidth <= MOBILE_BREAKPOINT) {
-      bettingSectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
   }
 
   // Only treat a bet as valid if it matches the current race
@@ -142,13 +133,14 @@
                 betTotal={$serverRaceState.betTotals?.[monster.id] || 0}
                 onSelect={handleSelectMonster}
                 disabled={validBet !== null && monster.id !== validBet.monsterId}
+                on:placed={() => { selectedMonster = null; }}
               />
             </div>
           {/each}
         </div>
       </div>
 
-      <aside class="betting-section" bind:this={bettingSectionEl}>
+      <aside class="betting-section">
         <BettingSlip {selectedMonster} monsters={$monsters} on:placed={() => { selectedMonster = null; }} />
       </aside>
     </div>
@@ -174,7 +166,7 @@
 <style>
   .home-page {
     position: relative;
-    padding: 2rem;
+    padding: 2rem 1.4rem;
     max-width: 1400px;
     margin: 0 auto;
   }

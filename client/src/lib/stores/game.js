@@ -29,6 +29,7 @@ export const serverRaceState = writable({
   winner: null,
   rankings: [],
   events: null,
+  venue: null,
   raceDuration: null,
   raceStartedAt: null,
 });
@@ -67,6 +68,7 @@ export function updateServerRaceState(raceData) {
     winner: raceData.winner || null,
     rankings: raceData.rankings || [],
     events: raceData.events || null,
+    venue: raceData.venue || null,
     raceDuration: raceData.raceDuration || null,
     raceStartedAt: raceData.raceStartedAt || null,
   });

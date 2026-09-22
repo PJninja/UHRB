@@ -1,6 +1,8 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { monsterHistory } from '../stores/history.js';
+  import { candies, placeBet } from '../stores/game.js';
   import RichText from './RichText.svelte';
 
   export let monster;
@@ -10,6 +12,8 @@
   export let betTotal = 0;  // Total candies bet on this monster
   export let onSelect = null;
   export let disabled = false;
+
+  const dispatch = createEventDispatcher();
 
   $: record = $monsterHistory[monster.id];
   $: isChampion = monster.isReturningChampion === true;
@@ -23,6 +27,41 @@
     if (onSelect && !disabled) {
       onSelect(monster);
     }
+  }
+
+  // ── Mobile mini betting slip — replaces View Details/Select on the
+  // selected card so betting doesn't require jumping to the full slip. ──
+  let miniBetAmount = 10;
+  let miniBetError = null;
+  let wasSelected = false;
+
+  // Reset the form whenever this card transitions into the selected state.
+  $: if (selected && !wasSelected) {
+    miniBetAmount = 10;
+    miniBetError = null;
+  }
+  $: wasSelected = selected;
+
+  $: miniCanBet = miniBetAmount >= 1 && miniBetAmount <= $candies;
+
+  function setMiniPercentage(percentage) {
+    miniBetAmount = Math.max(1, Math.floor($candies * percentage));
+  }
+
+  async function handleMiniApply() {
+    if (!miniCanBet) return;
+    miniBetError = null;
+    try {
+      await placeBet(monster.id, Math.floor(Number(miniBetAmount)));
+      dispatch('placed');
+    } catch {
+      miniBetError = 'Bet failed — try again.';
+    }
+  }
+
+  function handleMiniCancel() {
+    miniBetError = null;
+    if (onSelect) onSelect(null);
   }
 </script>
 
@@ -85,6 +124,42 @@
           </button>
         {/if}
       </div>
+
+      {#if selected && onSelect}
+        <div class="mini-bet-slip" role="group" aria-label="Quick bet on {monster.name}">
+          <div class="mini-bet-row">
+            <input
+              type="number"
+              class="mini-bet-input"
+              bind:value={miniBetAmount}
+              min="1"
+              max={$candies}
+              aria-label="Bet amount"
+            />
+            <button
+              class="button button-primary mini-icon-btn"
+              aria-label="Place bet"
+              title="Place bet"
+              on:click={handleMiniApply}
+              disabled={!miniCanBet}
+            >✓</button>
+            <button
+              class="button button-danger mini-icon-btn"
+              aria-label="Cancel"
+              title="Cancel"
+              on:click={handleMiniCancel}
+            >✕</button>
+          </div>
+          <div class="mini-bet-shortcuts">
+            <button class="button button-secondary mini-shortcut" on:click={() => setMiniPercentage(0.25)} disabled={$candies < 4}>1/4</button>
+            <button class="button button-secondary mini-shortcut" on:click={() => setMiniPercentage(0.5)} disabled={$candies < 2}>1/2</button>
+            <button class="button button-secondary mini-shortcut" on:click={() => setMiniPercentage(1)}>ALL</button>
+          </div>
+          {#if miniBetError}
+            <p class="mini-bet-error">{miniBetError}</p>
+          {/if}
+        </div>
+      {/if}
     </div>
   {:else}
     <!-- Full view for Bio page - NO STATS SHOWN -->
@@ -400,6 +475,65 @@
     flex: 1;
     font-size: 0.75rem;
     padding: 0.6rem 1rem;
+  }
+
+  /* ── Mobile mini betting slip ── */
+  .mini-bet-slip {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    .monster-card.selected .actions {
+      display: none;
+    }
+
+    .mini-bet-slip {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+  }
+
+  .mini-bet-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .mini-bet-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .mini-icon-btn {
+    flex-shrink: 0;
+    width: 48px;
+    padding: 0.5rem;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .mini-bet-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .mini-shortcut {
+    padding: 0.45rem;
+    font-size: 0.7rem;
+  }
+
+  .mini-bet-error {
+    margin: 0;
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--eldritch-red);
+    text-align: center;
   }
 
   /* Full view styles */

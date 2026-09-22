@@ -70,13 +70,6 @@
       {:else}
         <div class="odds-value">—</div>
       {/if}
-      {#if bettingOpen}
-        <p class="odds-hint">Place your bet on the race screen.</p>
-      {:else if $serverRaceState.state === 'racing'}
-        <p class="odds-hint">Race in progress — betting is closed.</p>
-      {:else}
-        <p class="odds-hint">Awaiting the next race.</p>
-      {/if}
     </div>
   {/if}
 
@@ -202,14 +195,6 @@
     color: var(--candy-color);
     line-height: 1;
     margin: 0.25rem 0;
-  }
-
-  .odds-hint {
-    font-size: 1rem;
-    font-style: italic;
-    color: var(--text-secondary);
-    margin: 0.5rem 0 0;
-    line-height: 1.4;
   }
 
   /* ── Back button ── */

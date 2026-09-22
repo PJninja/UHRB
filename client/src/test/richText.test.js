@@ -109,4 +109,21 @@ describe('parseRichText', () => {
     expect(result).toHaveLength(1);
     expect(result[0].text).toBe('line one\nline two');
   });
+
+  // ─── Nested tags (known limitation — parsing is single-level, not recursive) ─
+  // Data fields like a monster's racingStyle/temperament may already carry their
+  // own tag (e.g. server/src/data/appearanceData.js's temperaments). Wrapping
+  // such a field in another tag at a call site produces nested tags of two
+  // different types, which parseRichText does NOT resolve — the outer tag's
+  // content is captured verbatim, so the inner tag renders as literal text
+  // instead of applying its effect. Call sites must never nest tags around a
+  // field that may already contain one (see client/src/routes/Race.svelte's
+  // buildCommentary, which interpolates temperament/racingStyle unwrapped,
+  // matching the same convention MonsterCard.svelte and Bio.svelte use).
+  it('does not resolve a differently-tagged inner tag — outer tag content is captured verbatim', () => {
+    const result = parseRichText('<ancient><glow>Eerily pleasant</glow></ancient>');
+    expect(result).toHaveLength(1);
+    expect(result[0].effect).toBe('ancient');
+    expect(result[0].text).toBe('<glow>Eerily pleasant</glow>');
+  });
 });

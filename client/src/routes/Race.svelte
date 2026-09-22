@@ -9,7 +9,41 @@
   import { simulateRace } from '../lib/utils/raceSimulation.js';
   import { validatePayout } from '../lib/services/api.js';
   import { randomInt } from '../lib/utils/random.js';
+  import { flavorLine } from '../lib/utils/commentaryFlavor.js';
   import RichText from '../lib/components/RichText.svelte';
+  import RaceAtmosphere from '../lib/components/RaceAtmosphere.svelte';
+
+  // Monster-flavored commentary templates — reused across events via flavorLine().
+  // racingStyle/temperament are pre-authored short phrases (server/src/data/bioData.js,
+  // appearanceData.js) that already slot naturally into these sentence shapes.
+  const leadChangeStyleTemplates = [
+    ({ name, style }) => `${name} ${style} into the front of the field.`,
+    ({ name, style }) => `${name} ${style} past the others, and does not look back.`,
+  ];
+  const leadChangeTemperamentTemplates = [
+    ({ name, temperament }) => `The lead changes hands. ${name}, ${temperament}, does not celebrate.`,
+    ({ name, temperament }) => `${name} takes the front. ${temperament}, as always.`,
+  ];
+  const velocityBurstStyleTemplates = [
+    ({ name, style }) => `${name} ${style} at a velocity the track was not built for.`,
+    ({ name, style }) => `${name} ${style}, faster now, faster than the officials can record.`,
+  ];
+  const velocityBurstTemperamentTemplates = [
+    ({ name, temperament }) => `${name} surges forward, ${temperament}, uninterested in the judges' opinion.`,
+    ({ name, temperament }) => `${name} accelerates without warning. ${temperament}. Nothing else needs saying.`,
+  ];
+  const milestoneStyleTemplates = [
+    ({ name, style }) => `Halfway. ${name} ${style} while the rest of the field reconsiders its choices.`,
+    ({ name, style }) => `The midpoint passes. ${name} ${style}, unconcerned with what is behind.`,
+  ];
+  const finishStyleTemplates = [
+    ({ name, style }) => `${name} ${style} across the finish line. Nothing disputes the result.`,
+    ({ name, style }) => `${name} ${style} home. The race is over before the crowd finishes reacting.`,
+  ];
+  const finishTemperamentTemplates = [
+    ({ name, temperament }) => `${name} wins. ${temperament}, as the crowd already knew.`,
+    ({ name, temperament }) => `${name} takes the race, ${temperament} even in victory.`,
+  ];
 
   // Runic sigils — one per lane slot, stable for the whole race
   const HORROR_GLYPHS = ['ᛟ', 'ᛦ', 'ᛏ', 'ᚦ', 'ᚷ', 'ᚱ'];
@@ -31,6 +65,7 @@
   let raceFinished = false;
   let winnerCrossed = false;  // true when winner hits the finish line (freezes ranks, changes label)
   let raceMonsters = [];  // snapshot of monsters at race start — insulates animation from store updates
+  let venue = null;       // snapshot of this race's cosmetic venue — same insulation rationale
   let winner = null;
   let isValidating = false;
   let validationResult = null;
@@ -114,7 +149,7 @@
         `${m.name} ${m.racingStyle.toLowerCase()} with terrible purpose.`,
         `${m.name} has come from ${m.location}. It remembers nothing of peace.`,
         `Witnesses describe ${m.name} in contradictory terms, all of them wrong.`,
-        `The judges record ${m.name}'s temperament as: <ancient>${m.temperament}</ancient>. They close the file.`,
+        `The judges record ${m.name}'s temperament as: ${m.temperament}. They close the file.`,
         `${m.name} does not acknowledge the other competitors. This may be mercy.`,
         `The lane assigned to ${m.name} has not been the same since.`,
         `Observers near ${m.name}'s lane have begun keeping their distance without understanding why.`,
@@ -313,6 +348,8 @@
         `Something at the front has changed. ${currentLeader.monster.name} is proof of it.`,
         `${currentLeader.monster.name} does not acknowledge the lead. It simply has it.`,
         `The previous leader has been noted and set aside. ${currentLeader.monster.name} continues.`,
+        flavorLine(currentLeader.monster, leadChangeStyleTemplates),
+        flavorLine(currentLeader.monster, leadChangeTemperamentTemplates),
       ]));
     }
     prevLeaderId = currentLeader.monster.id;
@@ -354,6 +391,8 @@
           `<glow>${monster.name}</glow> has exceeded what was expected. The track has noted this without approving it.`,
           `The officials have clocked ${monster.name} at a speed they will not repeat aloud.`,
           `Something has happened to ${monster.name}'s pace. The judges are writing it down under the wrong category.`,
+          flavorLine(monster, velocityBurstStyleTemplates),
+          flavorLine(monster, velocityBurstTemperamentTemplates),
         ]));
         break;
       }
@@ -380,6 +419,7 @@
         'The midpoint passes beneath them. From here, there is only finish or failure.',
         'Half remains. The horrors have decided what kind of race this will be.',
         'The second half begins. The first half does not miss them.',
+        flavorLine(sorted[0].monster, milestoneStyleTemplates),
       ]));
     }
 
@@ -522,6 +562,7 @@
     });
     mountedRaceId = srs.raceId;
     mountedBet    = get(currentBet);
+    venue         = srs.venue || null;
     const serverRankings = srs.rankings;
     // Use the server's authoritative duration so both sides finish at the same time.
     // Fall back to a local random only if the server hasn't sent one yet.
@@ -613,6 +654,7 @@
         `<glow>${name}</glow> claims the race. Nothing disputes the result.`,
         `The verdict is ${name}. The crowd processes this at their own pace.`,
         `${name} finishes first. The race closes behind them like a wound.`,
+        ...(winner ? [flavorLine(winner, finishStyleTemplates), flavorLine(winner, finishTemperamentTemplates)] : []),
       ]);
       logCommentaryLine(winnerLine);
       startTypewriter(winnerLine, () => {
@@ -730,9 +772,20 @@
 </script>
 
 <div class="race-page">
+  {#if venue}
+    <RaceAtmosphere theme={venue.backdrop} accent={venue.accent} />
+  {/if}
+
+  <div class="race-content">
   <div class="header">
     <div class="race-status-label">{winnerCrossed ? 'RACE COMPLETE' : 'RACE IN PROGRESS'}</div>
     <h1>The Race</h1>
+    {#if venue}
+      <div class="venue-badge" style="--venue-color: {venue.accent}">
+        <span class="venue-badge-label">VENUE</span>
+        <span class="venue-badge-name">{venue.name}</span>
+      </div>
+    {/if}
     {#if $currentBet}
       {@const betMonster = raceMonsters.find(m => m.id === playerBetId)}
       <div class="bet-info">
@@ -745,8 +798,8 @@
     {/if}
   </div>
 
-  <div class="race-track"
-    style="--race-progress: {raceProgress.toFixed(3)}; --glyph-speed: {Math.round(800 - glyphStep * (450 / RACE_INTENSITY_STEPS))}ms">
+  <div class="race-track theme-{venue?.backdrop ?? 'ruins'}"
+    style="--race-progress: {raceProgress.toFixed(3)}; --glyph-speed: {Math.round(800 - glyphStep * (450 / RACE_INTENSITY_STEPS))}ms; --atmosphere-accent: {venue?.accent ?? 'var(--eldritch-purple)'}">
     {#each displayMonsters as { id, monster, position, velocityMult, finished }}
       {@const rank = ranks[id] ?? 0}
       {@const isPlayer = id === playerBetId}
@@ -793,6 +846,7 @@
   <div class="commentary-ticker" class:fading={raceFinished} class:typing={isTyping}>
     <span class="ticker-text"><RichText text={typedText} /></span>
   </div>
+  </div>
 
   {#if raceFinished}
     <div class="finish-overlay">
@@ -809,20 +863,6 @@
           <div class="banner-header">
             {winner?.name ?? '—'} Crosses First
           </div>
-
-          {#if validationResult?.won}
-            <div class="result-won">
-              <div class="result-label">You Win</div>
-              <div class="result-payout">{validationResult.payout} <span class="candy-word">Candies</span></div>
-            </div>
-          {:else if validationResult?.bet}
-            <div class="result-lost">
-              <div class="result-label">The Void Takes Its Due</div>
-              <div class="result-sublabel">Better fortune in the next summoning.</div>
-            </div>
-          {:else}
-            <div class="result-spectator">No stake placed.</div>
-          {/if}
         {/if}
       </div>
     </div>
@@ -831,13 +871,60 @@
 
 <style>
   .race-page {
-    padding: 2rem;
+    position: relative;
+    padding: 2rem 1.4rem;
     max-width: 1200px;
     margin: 0 auto;
     min-height: 100vh;
+  }
+
+  /* Sits above the RaceAtmosphere canvas (z-index: 0) — same stacking
+     approach Home.svelte uses for its .content wrapper over .rune-bg. */
+  .race-content {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+  }
+
+  /* ── Venue badge ────────────────────────────────────── */
+  .venue-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .venue-badge-label {
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .venue-badge-name {
+    font-family: 'Cinzel', serif;
+    font-weight: bold;
+    font-size: 1.6rem;
+    color: var(--venue-color, var(--text-accent));
+    letter-spacing: 0.5px;
+    animation: venue-name-glow 2.6s ease-in-out infinite;
+  }
+
+  @keyframes venue-name-glow {
+    0%, 100% { text-shadow: 0 0 4px var(--venue-color, var(--eldritch-purple)); }
+    50%      { text-shadow: 0 0 16px var(--venue-color, var(--eldritch-purple)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .venue-badge-name {
+      animation: none;
+      text-shadow: 0 0 10px var(--venue-color, var(--eldritch-purple));
+    }
   }
 
   /* ── Header ─────────────────────────────────────────── */
@@ -920,7 +1007,7 @@
   }
 
   .race-lane.is-leader {
-    border-color: #9b7acc;
+    border-color: var(--atmosphere-accent, #9b7acc);
     animation: leader-pulse 1.8s ease-in-out infinite;
   }
 
@@ -1090,7 +1177,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(80, 30, 100, 0.25) 100%);
+    background: linear-gradient(90deg, transparent 0%, var(--atmosphere-accent, #501e64) 100%);
     opacity: var(--race-progress, 0);
     pointer-events: none;
     z-index: 0;
@@ -1351,63 +1438,6 @@
     animation: pulse 1.5s ease-in-out infinite;
   }
 
-  /* Win result */
-  .result-won {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .result-label {
-    font-family: 'Cinzel', serif;
-    font-size: 0.8rem;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-  }
-
-  .result-payout {
-    font-family: 'Cinzel', serif;
-    font-size: 3rem;
-    font-weight: 900;
-    color: var(--candy-color);
-    text-shadow: 0 0 20px rgba(201, 169, 97, 0.6);
-    letter-spacing: 4px;
-    line-height: 1;
-  }
-
-  .candy-word {
-    font-size: 1.2rem;
-    opacity: 0.8;
-    letter-spacing: 3px;
-  }
-
-  /* Loss result */
-  .result-lost {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .result-lost .result-label {
-    color: var(--eldritch-red);
-    font-size: 1rem;
-  }
-
-  .result-sublabel {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    font-style: italic;
-  }
-
-  .result-spectator {
-    color: var(--text-secondary);
-    font-style: italic;
-    font-size: 0.95rem;
-  }
-
   .error-message {
     color: var(--eldritch-red);
     font-size: 1rem;
@@ -1417,7 +1447,11 @@
   /* ── Responsive ─────────────────────────────────────── */
   @media (max-width: 768px) {
     .race-page {
-      padding: 1rem;
+      padding: 1rem 0.7rem;
+    }
+
+    .venue-badge-name {
+      font-size: 1.2rem;
     }
 
     /* Shrink every lane to roughly half height so all horrors have a
@@ -1488,10 +1522,6 @@
 
     .banner-header {
       font-size: 1.3rem;
-    }
-
-    .result-payout {
-      font-size: 2.2rem;
     }
   }
 </style>
