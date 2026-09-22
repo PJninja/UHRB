@@ -14,6 +14,9 @@
   let canvas;
   let raf;
   let tocOpen = false;
+  let bettingSectionEl;
+
+  const MOBILE_BREAKPOINT = 768;
 
   function scrollToMonster(id) {
     document.getElementById(`monster-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -25,6 +28,12 @@
 
   function handleSelectMonster(monster) {
     selectedMonster = monster;
+    // On mobile the betting slip sits above the horror grid (reordered by
+    // the stacked layout) rather than beside it, so it's easy to miss —
+    // scroll it into view whenever a horror is picked.
+    if (window.innerWidth <= MOBILE_BREAKPOINT) {
+      bettingSectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   // Only treat a bet as valid if it matches the current race
@@ -127,7 +136,7 @@
         </div>
       </div>
 
-      <aside class="betting-section">
+      <aside class="betting-section" bind:this={bettingSectionEl}>
         <BettingSlip {selectedMonster} monsters={$monsters} on:placed={() => { selectedMonster = null; }} />
       </aside>
     </div>
