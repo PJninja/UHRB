@@ -3,7 +3,7 @@
   import { push } from 'svelte-spa-router';
   import { get } from 'svelte/store';
   import { monsters } from '../lib/stores/monsters.js';
-  import { serverRaceState, currentBet, syncBalanceFromPayout, clearBet } from '../lib/stores/game.js';
+  import { serverRaceState, currentBet, candies, syncBalanceFromPayout, clearBet, MERCY_BALANCE } from '../lib/stores/game.js';
   import { sessionId } from '../lib/stores/session.js';
   import { addRaceToHistory } from '../lib/stores/history.js';
   import { simulateRace } from '../lib/utils/raceSimulation.js';
@@ -529,7 +529,7 @@
     // If we joined mid-race, offset startTime so progress begins at the right point.
     const elapsed = srs.raceStartedAt ? Math.max(0, Date.now() - srs.raceStartedAt) : 0;
 
-    raceData = simulateRace(raceMonsters, raceDuration, serverRankings);
+    raceData = simulateRace(raceMonsters, raceDuration, serverRankings, srs.events);
     winner = raceData.winner;
     runawayId    = raceData.outliers.runawayId;
     stragglerIId = raceData.outliers.stragglerI;
@@ -634,6 +634,17 @@
           // Keep the local server-derived winner if the response omits one
           // (e.g. the race is no longer retrievable server-side)
           if (validation.winner) winner = validation.winner;
+
+          // `candies` already reflects the post-bet-deduction balance (placeBet
+          // synced it at bet time), matching the server's pre-resolution
+          // session.candyBalance. Comparing what the payout would have produced
+          // unclamped against what the server actually returned catches every
+          // floor-triggered case, including an all-in bet that leaves 0 pre-payout.
+          const balanceBeforePayout = get(candies);
+          const unclampedBalance = balanceBeforePayout + (validation.payout || 0);
+          const mercyRescued = unclampedBalance < MERCY_BALANCE
+            && validation.candyBalance === MERCY_BALANCE;
+
           syncBalanceFromPayout(validation.candyBalance, validation.balanceToken);
 
           const sortedMonsters = validation.rankings?.length
@@ -646,6 +657,7 @@
             bet: validation.bet,
             won: validation.won,
             payout: validation.payout,
+            mercyRescued,
             timestamp: Date.now(),
             commentary: commentaryLog,
           });

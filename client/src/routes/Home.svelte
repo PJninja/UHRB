@@ -2,11 +2,12 @@
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { monsters } from '../lib/stores/monsters.js';
-  import { currentBet, serverRaceState } from '../lib/stores/game.js';
+  import { currentBet, serverRaceState, betShares } from '../lib/stores/game.js';
   import { history } from '../lib/stores/history.js';
   import MonsterCard from '../lib/components/MonsterCard.svelte';
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import BettingSlip from '../lib/components/BettingSlip.svelte';
+  import CrowdWagerBar from '../lib/components/CrowdWagerBar.svelte';
 
   let selectedMonster = null;
   let canvas;
@@ -93,6 +94,10 @@
     </div>
 
     <RaceTimer />
+
+    {#if $serverRaceState.state === 'waiting' || $serverRaceState.state === 'closed'}
+      <CrowdWagerBar monsters={$monsters} shares={$betShares} selectedMonsterId={validBet?.monsterId} />
+    {/if}
 
     <div class="main-content">
       <div class="monsters-section">

@@ -66,6 +66,9 @@ const appCounts  = {};
 let   prevWinner = null;
 let   prevMonsters = null;
 let   totalWinnerOdds = 0;
+let   surgeCount = 0;
+let   surgeLegendaryCount = 0;
+let   collapseCount = 0;
 
 for (let i = 1; i <= RACES; i++) {
   const raceSeed = `${BASE_SEED}-race-${i}`;
@@ -76,7 +79,7 @@ for (let i = 1; i <= RACES; i++) {
   const result = simulateRace(monsters);
   resetSeed();
 
-  const { winner, rankings } = result;
+  const { winner, rankings, events } = result;
 
   // Tally stats
   winCounts[winner.name] = (winCounts[winner.name] ?? 0) + 1;
@@ -84,6 +87,11 @@ for (let i = 1; i <= RACES; i++) {
     appCounts[m.name] = (appCounts[m.name] ?? 0) + 1;
   }
   totalWinnerOdds += odds[winner.id] ?? 1;
+  if (events?.surgeId) {
+    surgeCount++;
+    if (winner.isLegendary) surgeLegendaryCount++;
+  }
+  if (events?.collapseId) collapseCount++;
 
   const row = {
     race: i,
@@ -92,6 +100,7 @@ for (let i = 1; i <= RACES; i++) {
     winnerLegendary: winner.isLegendary ?? false,
     winnerOdds: odds[winner.id] ?? null,
     winnerTraits: { ...winner.traits },
+    events: events ?? { surgeId: null, collapseId: null },
     rankings: rankings.map(({ position, monster: m }) => ({
       position,
       name: m.name,
@@ -141,6 +150,8 @@ if (FORMAT === 'table' || QUIET) {
   print(`SUMMARY  (${RACES} races, seed base: ${BASE_SEED})`);
   print('═'.repeat(56));
   print(`Avg winner odds: ${avgOdds}×`);
+  print(`Surge races:     ${surgeCount}  (${((surgeCount / RACES) * 100).toFixed(1)}%, ${surgeLegendaryCount} legendary)`);
+  print(`Collapse races:  ${collapseCount}  (${((collapseCount / RACES) * 100).toFixed(1)}%)`);
   print('\nTop winners:');
   for (const [name, wins] of topWins) {
     const rate = ((wins / RACES) * 100).toFixed(1);

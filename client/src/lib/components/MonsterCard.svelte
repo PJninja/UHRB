@@ -13,6 +13,7 @@
 
   $: record = $monsterHistory[monster.id];
   $: isChampion = monster.isReturningChampion === true;
+  $: isLegendary = monster.isLegendary === true;
 
   function viewBio() {
     push(`/bio/${monster.id}`);
@@ -25,7 +26,7 @@
   }
 </script>
 
-<div class="monster-card card" class:selected class:has-bet={hasBet} class:compact class:is-champion={isChampion}>
+<div class="monster-card card" class:selected class:has-bet={hasBet} class:compact class:is-champion={isChampion} class:is-legendary={isLegendary}>
   <div class="monster-header">
     <h3><RichText text={monster.name} /></h3>
     <div class="monster-origin">
@@ -165,6 +166,71 @@
 
   .monster-card.is-champion {
     border-color: rgba(201, 169, 97, 0.45);
+  }
+
+  /* Legendary horrors — the unique, one-off spawns — get a distinct shimmering
+     border so they read as rarer than an ordinary returning champion. */
+  .monster-card.is-legendary {
+    border-color: var(--eldritch-purple);
+    animation: legendary-shimmer 3.5s ease-in-out infinite;
+  }
+
+  .monster-card.is-legendary::before {
+    border-color: rgba(155, 135, 197, 0.5);
+  }
+
+  .monster-card.is-legendary::after {
+    background: var(--eldritch-purple);
+    box-shadow: 0 0 8px rgba(155, 135, 197, 0.7);
+  }
+
+  @keyframes legendary-shimmer {
+    0%, 100% {
+      box-shadow: 0 0 14px rgba(155, 135, 197, 0.25), var(--shadow);
+    }
+    50% {
+      box-shadow: 0 0 28px rgba(155, 135, 197, 0.5), var(--shadow);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .monster-card.is-legendary {
+      animation: none;
+      box-shadow: 0 0 16px rgba(155, 135, 197, 0.35), var(--shadow);
+    }
+  }
+
+  /* Legendary name — larger and rendered in the same metallic-gold shimmer
+     used by the <gold> RichText tag, so it reads as a title, not just a label. */
+  .monster-card.is-legendary .monster-header h3 {
+    font-size: 1.6rem;
+    background: linear-gradient(
+      90deg,
+      #8a6e2a 0%,
+      #c9a961 30%,
+      #f0d080 50%,
+      #c9a961 70%,
+      #8a6e2a 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow: 0 0 16px rgba(201, 169, 97, 0.5);
+    animation: legendary-name-shimmer 4s linear infinite;
+  }
+
+  @keyframes legendary-name-shimmer {
+    0%   { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .monster-card.is-legendary .monster-header h3 {
+      animation: none;
+      background-position: 0% center;
+    }
   }
 
   .champion-badge {

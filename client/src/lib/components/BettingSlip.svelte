@@ -1,8 +1,9 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import { candies, currentBet, serverRaceState } from '../stores/game.js';
+  import { candies, currentBet, serverRaceState, MERCY_BALANCE } from '../stores/game.js';
   import { placeBet, clearBet } from '../stores/game.js';
   import { formatOdds } from '../utils/odds.js';
+  import RichText from './RichText.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -12,9 +13,12 @@
   let betAmount = 10;
   let betError = null;
 
+  $: hasActiveBet = $currentBet !== null && $currentBet.raceId === $serverRaceState.raceId;
+  // A pending bet hasn't been lost yet — count it back into the balance so
+  // the player isn't branded broke while it could still win.
+  $: isBroke = $candies + (hasActiveBet ? $currentBet.amount : 0) <= MERCY_BALANCE;
   $: maxBet = $candies;
   $: canPlaceBet = selectedMonster && betAmount >= 1 && betAmount <= maxBet;
-  $: hasActiveBet = $currentBet !== null && $currentBet.raceId === $serverRaceState.raceId;
   $: if (selectedMonster) betError = null;
 
   $: odds = $serverRaceState.odds ?? {};
@@ -55,8 +59,17 @@
     : null;
 </script>
 
-<div class="betting-slip card">
-  <h3>Betting Slip</h3>
+<div class="betting-slip card" class:beggars-wager={isBroke}>
+  <h3>{isBroke ? "Beggar's Wager" : 'Betting Slip'}</h3>
+
+  {#if isBroke}
+    <div class="void-ledger">
+      <span class="seal">🕮</span>
+      <p class="ledger-text">
+        <RichText text="The <ancient>Hollow Ledger</ancient> has marked you. <madness>You are given pity... at what cost</madness>" />
+      </p>
+    </div>
+  {/if}
 
   <div class="balance-display">
     <span class="label">Your Candies:</span>
@@ -156,6 +169,43 @@
   .betting-slip h3 {
     margin: 0 0 1rem 0;
     text-align: center;
+  }
+
+  /* ── Beggar's Wager (idea 3): desaturated, tattered skin at the mercy floor ── */
+  .betting-slip.beggars-wager {
+    border-color: #5a5a62;
+    border-style: dashed;
+    filter: saturate(0.55);
+  }
+
+  .betting-slip.beggars-wager h3 {
+    color: #8a8a90;
+    letter-spacing: 2px;
+  }
+
+  /* ── Void Ledger (idea 1): flavor banner while broke ── */
+  .void-ledger {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    background: rgba(10, 6, 8, 0.4);
+    border: 2px solid #5a5a62;
+  }
+
+  .void-ledger .seal {
+    font-size: 1.3rem;
+    line-height: 1;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  .void-ledger .ledger-text {
+    margin: 0;
+    font-size: 0.85rem;
+    font-style: italic;
+    line-height: 1.4;
   }
 
   .balance-display {

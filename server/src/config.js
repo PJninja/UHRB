@@ -37,4 +37,24 @@ export const config = {
   raceDurationMax:      testMode ?   5000 :  30000,
   bettingCloseBeforeMs: testMode ?    500 :   5000,
   legendaryChance:      testMode ?    100 :      5,
+
+  // Performance events — rare, guaranteed-outcome margins layered on top of
+  // the natural stat+chaos result. Surge only ever applies to the monster
+  // that would already win (widens their margin); collapse only ever
+  // applies to a random non-winner (crushes them to dead last). Both are
+  // payout-neutral — payouts key off winnerId only, never finish position.
+  surgeChance:          testMode ?    100 :      8,
+  legendarySurgeChance: testMode ?    100 :     20,
+  collapseChance:       testMode ?    100 :     10,
+
+  // Ambient "crowd" bets — cosmetic phantom wagers applied server-side to the
+  // race's crowd-favorite horror(s) so the bet-total display feels alive even
+  // with few or no real players connected. Never affects odds/payout.
+  phantomBetMin:        10,
+  phantomBetMax:        300,
+  phantomBetChunksMin:  2,
+  phantomBetChunksMax:  5,
+  // Rolled independently per crowd-favorite horror — each one has this % chance
+  // of getting no ghost bet at all, so a tie doesn't always light up both.
+  phantomBetSkipChance: 10,
 };

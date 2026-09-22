@@ -45,9 +45,81 @@
     : monster.audienceFavor <= 2 ? '#4a5fa5'
     : monster.audienceFavor === 3 ? '#6b5a44'
     : 'var(--candy-color)';
+
+  const LEGENDARY_GLYPHS = ['⚝', 'ᛟ', 'ᚱ', 'ᛞ'];
+
+  // Svelte action: drives a page-wide drifting-rune canvas for as long as the
+  // <canvas> node exists. Re-fires automatically whenever the {#if} that wraps
+  // it toggles (e.g. navigating between a legendary and ordinary bio), since
+  // Svelte creates/destroys the node — no manual lifecycle wiring needed.
+  function legendaryParticles(node) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return { destroy() {} };
+    }
+
+    const ctx = node.getContext('2d');
+    let W = node.width = window.innerWidth;
+    let H = node.height = window.innerHeight;
+    let raf;
+
+    const particles = Array.from({ length: 36 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      glyph: LEGENDARY_GLYPHS[Math.floor(Math.random() * LEGENDARY_GLYPHS.length)],
+      size: 12 + Math.random() * 20,
+      opacity: 0.05 + Math.random() * 0.12,
+      speed: 0.15 + Math.random() * 0.25,
+      drift: (Math.random() - 0.5) * 0.3,
+    }));
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      for (const p of particles) {
+        ctx.font = `${p.size}px 'Cinzel', serif`;
+        ctx.fillStyle = `rgba(155, 135, 197, ${p.opacity})`;
+        ctx.fillText(p.glyph, p.x, p.y);
+
+        p.y -= p.speed;
+        p.x += p.drift;
+
+        if (p.y < -p.size) {
+          p.y = H + p.size;
+          p.x = Math.random() * W;
+          p.glyph = LEGENDARY_GLYPHS[Math.floor(Math.random() * LEGENDARY_GLYPHS.length)];
+        }
+        if (p.x < -p.size) p.x = W + p.size;
+        if (p.x > W + p.size) p.x = -p.size;
+      }
+      raf = requestAnimationFrame(draw);
+    }
+
+    function handleResize() {
+      W = node.width = window.innerWidth;
+      H = node.height = window.innerHeight;
+    }
+    window.addEventListener('resize', handleResize);
+    draw();
+
+    return {
+      destroy() {
+        cancelAnimationFrame(raf);
+        window.removeEventListener('resize', handleResize);
+      },
+    };
+  }
 </script>
 
 <div class="bio-page">
+  {#if monster?.isLegendary}
+    <canvas class="legendary-particles" use:legendaryParticles aria-hidden="true"></canvas>
+    <div class="legendary-frame" aria-hidden="true">
+      <span class="legendary-frame-glyph corner-tl">⚝</span>
+      <span class="legendary-frame-glyph corner-tr">⚝</span>
+      <span class="legendary-frame-glyph corner-bl">⚝</span>
+      <span class="legendary-frame-glyph corner-br">⚝</span>
+    </div>
+  {/if}
+
   <div class="page-header">
     <button class="button button-secondary back-button" on:click={() => push('/')}>
       ← Back to Race
@@ -229,9 +301,72 @@
 
 <style>
   .bio-page {
+    position: relative;
+    z-index: 1;
     padding: 2rem;
     max-width: 1100px;
     margin: 0 auto;
+  }
+
+  /* ── Legendary page-wide effects ── */
+  .legendary-particles {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .legendary-frame {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    border: 3px solid var(--eldritch-purple);
+    box-shadow:
+      inset 0 0 40px rgba(155, 135, 197, 0.14),
+      inset 0 0 90px rgba(155, 135, 197, 0.07),
+      0 0 30px rgba(155, 135, 197, 0.25);
+    animation: legendary-frame-shimmer 3.5s ease-in-out infinite;
+  }
+
+  .legendary-frame-glyph {
+    position: absolute;
+    font-family: 'Cinzel', serif;
+    font-size: 1.4rem;
+    color: var(--eldritch-purple);
+    text-shadow: 0 0 10px rgba(155, 135, 197, 0.8);
+    opacity: 0.85;
+  }
+
+  .corner-tl { top: 0.5rem;    left: 0.5rem; }
+  .corner-tr { top: 0.5rem;    right: 0.5rem; }
+  .corner-bl { bottom: 0.5rem; left: 0.5rem; }
+  .corner-br { bottom: 0.5rem; right: 0.5rem; }
+
+  @keyframes legendary-frame-shimmer {
+    0%, 100% {
+      border-color: rgba(155, 135, 197, 0.55);
+      box-shadow:
+        inset 0 0 40px rgba(155, 135, 197, 0.12),
+        inset 0 0 90px rgba(155, 135, 197, 0.06),
+        0 0 24px rgba(155, 135, 197, 0.2);
+    }
+    50% {
+      border-color: rgba(155, 135, 197, 0.9);
+      box-shadow:
+        inset 0 0 60px rgba(155, 135, 197, 0.22),
+        inset 0 0 120px rgba(155, 135, 197, 0.1),
+        0 0 40px rgba(155, 135, 197, 0.4);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .legendary-frame {
+      animation: none;
+      border-color: rgba(155, 135, 197, 0.7);
+    }
   }
 
   /* ── Page header ── */

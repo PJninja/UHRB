@@ -119,9 +119,13 @@ function calculatePerformance(monster) {
  * @param {object[]|null} serverRankings - Rankings from the server ({ position, monster }[]).
  *   When provided, final positions are taken directly from the server rather than re-rolled
  *   locally, guaranteeing the visual outcome matches the authoritative result.
+ * @param {{surgeId: string|null, collapseId: string|null}|null} serverEvents - Rare
+ *   guaranteed-margin events from the server. When present, the visual finish pattern
+ *   and outliers are forced to match instead of being rolled cosmetically, so a real
+ *   blowout always looks like one.
  * @returns {object} Race results with frames and winner
  */
-export function simulateRace(monsters, duration = 8000, serverRankings = null) {
+export function simulateRace(monsters, duration = 8000, serverRankings = null, serverEvents = null) {
   let performances;
 
   if (serverRankings && serverRankings.length > 0) {
@@ -148,8 +152,14 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     performances = perfs;
   }
 
+  // A server-confirmed surge/collapse always wins/craters for real, so force the
+  // visuals to match instead of rolling independently — a real blowout should
+  // always look like one, and a normal race should never be cosmetically drawn
+  // as a blowout it wasn't.
+  const hasServerEvent = !!(serverEvents && (serverEvents.surgeId || serverEvents.collapseId));
+
   // Select finish pattern and assign time offsets
-  const finishPattern = selectFinishPattern();
+  const finishPattern = hasServerEvent ? 'blowout' : selectFinishPattern();
   const fps = 60;
 
   performances.forEach(perf => {
@@ -166,8 +176,10 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null) {
     easeTable[i] = easeInOut(i / totalFrames);
   }
 
-  const outliers  = selectOutliers(performances);
-  const archetype = selectArchetype();
+  const outliers = hasServerEvent
+    ? { runawayId: serverEvents.surgeId ?? null, stragglerI: serverEvents.collapseId ?? null }
+    : selectOutliers(performances);
+  const archetype = hasServerEvent && serverEvents.surgeId ? 'wire-to-wire' : selectArchetype();
 
   // Generate raw velocity-based walks and then normalize so each monster
   // reaches exactly 100% at its personal finishTime.

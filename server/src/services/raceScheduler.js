@@ -1,6 +1,6 @@
 // Race lifecycle scheduler - manages the automatic race timer and simulation
 import { nanoid } from 'nanoid';
-import { setSeed, resetSeed, randomInt } from '../utils/random.js';
+import { setSeed, resetSeed, randomInt, rollChance } from '../utils/random.js';
 import { config } from '../config.js';
 import { generateRaceMonsters } from './monsterGenerator.js';
 import { simulateRace, calculateOdds } from './raceSimulator.js';
@@ -53,6 +53,9 @@ export function racePayload(race) {
           monster: sanitizeMonster(r.monster),
         }))
       : [],
+    // Rare guaranteed-margin events, mirroring winner/rankings' reveal timing —
+    // only populated once racing (after betting has closed).
+    events: race.events || null,
   };
 }
 
@@ -66,6 +69,7 @@ let currentRace = {
   raceDuration: null,
   winner: null,
   rankings: [],
+  events: null,
   odds: {},
   betTotals: {}, // Track total candies bet on each monster { monsterId: totalAmount }
   bettingClosed: false,
@@ -80,6 +84,7 @@ let finishTimeout = null;       // racing  → finished
 let nextRaceTimeout = null;     // finished → next schedule
 let timerInterval = null;
 let betBroadcastTimeout = null;
+let phantomBetTimeouts = [];    // staggered ambient "crowd" bet chunks for the current race
 
 /**
  * Cancel every pending lifecycle timer. Called whenever a phase transition
@@ -92,6 +97,91 @@ function clearLifecycleTimers() {
   if (finishTimeout)       { clearTimeout(finishTimeout);       finishTimeout = null; }
   if (nextRaceTimeout)     { clearTimeout(nextRaceTimeout);     nextRaceTimeout = null; }
   if (timerInterval)       { clearInterval(timerInterval);      timerInterval = null; }
+  phantomBetTimeouts.forEach(clearTimeout);
+  phantomBetTimeouts = [];
+}
+
+/**
+ * Audience favor tier (1-5) for a monster, mirroring sanitizeMonster's bucketing
+ * of the hidden `value` stat. Used internally to pick crowd favorites — never sent to clients.
+ * @param {object} monster
+ */
+function favorOf(monster) {
+  return Math.min(5, Math.ceil(monster.traits.value / 20));
+}
+
+/**
+ * Every monster sharing the race's highest audience-favor tier (usually one,
+ * but ties are possible since favor buckets a 1-100 value into 5 tiers).
+ * @param {object[]} monsters
+ * @returns {object[]}
+ */
+function pickCrowdFavorites(monsters) {
+  const maxFavor = Math.max(...monsters.map(favorOf));
+  return monsters.filter(m => favorOf(m) === maxFavor);
+}
+
+/**
+ * Split `total` into `count` positive integer chunks that sum exactly to `total`.
+ * @param {number} total
+ * @param {number} count
+ * @returns {number[]}
+ */
+function splitIntoChunks(total, count) {
+  const chunks = [];
+  let remaining = total;
+  for (let i = 0; i < count; i++) {
+    const chunksLeftAfterThis = count - i - 1;
+    if (chunksLeftAfterThis === 0) {
+      chunks.push(remaining);
+    } else {
+      const amount = randomInt(1, Math.max(1, remaining - chunksLeftAfterThis));
+      chunks.push(amount);
+      remaining -= amount;
+    }
+  }
+  return chunks;
+}
+
+/**
+ * Schedule ambient "crowd" bets on every crowd-favorite horror in the race.
+ * Purely cosmetic — applied through the same addBetToTotal() path a real bet
+ * uses, so it gets the existing debounced broadcast for free and never touches
+ * odds/payout. Each favorite independently has a phantomBetSkipChance% chance
+ * of getting nothing at all; otherwise it gets its own 10-300 candy total,
+ * delivered as several staggered chunks across the betting window.
+ * @param {string} raceId
+ * @param {object[]} monsters
+ * @param {number} delayMs - ms until the race auto-starts (the betting window length)
+ */
+function scheduleCrowdFavoriteBets(raceId, monsters, delayMs) {
+  const favorites = pickCrowdFavorites(monsters);
+  const maxDelayWindow = Math.max(0, delayMs - config.bettingCloseBeforeMs);
+
+  favorites.forEach(monster => {
+    // Rolled independently per favorite, so a tie doesn't always light up every
+    // horror sharing the top tier — one can go quiet while the other draws money.
+    if (rollChance(config.phantomBetSkipChance)) {
+      log.debug({ raceId, monsterId: monster.id }, 'crowd favorite bet skipped');
+      return;
+    }
+
+    const total = randomInt(config.phantomBetMin, config.phantomBetMax);
+    const chunkCount = randomInt(config.phantomBetChunksMin, config.phantomBetChunksMax);
+    const chunks = splitIntoChunks(total, chunkCount);
+
+    log.info({ raceId, monsterId: monster.id, total, chunkCount }, 'crowd favorite bet scheduled');
+
+    chunks.forEach(amount => {
+      const fireAt = randomInt(0, maxDelayWindow);
+      const timeout = setTimeout(() => {
+        if (currentRace.id !== raceId) return; // stale — race moved on before this chunk fired
+        addBetToTotal(monster.id, amount);
+        log.debug({ raceId, monsterId: monster.id, amount }, 'phantom bet chunk applied');
+      }, fireAt);
+      phantomBetTimeouts.push(timeout);
+    });
+  });
 }
 
 /**
@@ -160,6 +250,7 @@ export function scheduleNextRace() {
     raceDuration: null,
     winner: null,
     rankings: [],
+    events: null,
     odds,
     betTotals,
   };
@@ -178,6 +269,8 @@ export function scheduleNextRace() {
   raceTimeout = setTimeout(() => {
     startRace();
   }, delay);
+
+  scheduleCrowdFavoriteBets(raceId, monsters, delay);
 
   return getCurrentRace();
 }
@@ -226,6 +319,7 @@ export function startRace() {
   currentRace.raceDuration = raceDuration;
   currentRace.winner = raceResult.winner;
   currentRace.rankings = raceResult.rankings;
+  currentRace.events = raceResult.events;
 
   log.info({ raceId: currentRace.id, durationMs: raceDuration, winner: raceResult.winner.name }, 'race started');
 

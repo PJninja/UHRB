@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setSeed, resetSeed } from '../src/utils/random.js';
 import { simulateRace, calculateOdds } from '../src/services/raceSimulator.js';
+import { config } from '../src/config.js';
 
 function makeMonster(overrides = {}) {
   return {
@@ -196,5 +197,77 @@ describe('simulateRace', () => {
       if (winner.id === 'strong') strongWins++;
     }
     expect(strongWins).toBeGreaterThan(35);
+  });
+});
+
+// ─── performance events (surge / collapse) ─────────────────────────────────────
+
+describe('performance events', () => {
+  const originalSurge          = config.surgeChance;
+  const originalLegendarySurge = config.legendarySurgeChance;
+  const originalCollapse       = config.collapseChance;
+
+  afterEach(() => {
+    config.surgeChance          = originalSurge;
+    config.legendarySurgeChance = originalLegendarySurge;
+    config.collapseChance       = originalCollapse;
+  });
+
+  it('surge never changes who wins — it always matches the natural winner', () => {
+    config.surgeChance = 100;
+    config.legendarySurgeChance = 100;
+    config.collapseChance = 0;
+    const monsters = [makeMonster({ id: 'a' }), makeMonster({ id: 'b' }), makeMonster({ id: 'c' })];
+    for (let i = 0; i < 30; i++) {
+      setSeed(`surge-${i}`);
+      const { winner, events } = simulateRace(monsters, 1000);
+      expect(events.surgeId).toBe(winner.id);
+    }
+  });
+
+  it('collapse always forces the chosen monster to finish dead last, and is never the winner', () => {
+    config.surgeChance = 0;
+    config.collapseChance = 100;
+    const strong = makeMonster({ id: 'strong', traits: { speed: 10, endurance: 10, strength: 10, luck: 10, madness: 1, value: 50 } });
+    const weak   = makeMonster({ id: 'weak',   traits: { speed: 1,  endurance: 1,  strength: 1,  luck: 1,  madness: 1, value: 50 } });
+    const mid    = makeMonster({ id: 'mid' });
+    for (let i = 0; i < 30; i++) {
+      setSeed(`collapse-${i}`);
+      const { winner, rankings, events } = simulateRace([strong, weak, mid], 1000);
+      expect(events.collapseId).not.toBeNull();
+      expect(events.collapseId).not.toBe(winner.id);
+      expect(rankings[rankings.length - 1].monster.id).toBe(events.collapseId);
+    }
+  });
+
+  it('a legendary natural winner uses the higher legendarySurgeChance', () => {
+    config.surgeChance = 0; // non-legendary natural winners never get surge in this trial
+    config.legendarySurgeChance = 100; // legendary natural winners always do
+    config.collapseChance = 0;
+    const legend = makeMonster({ id: 'legend', isLegendary: true, traits: { speed: 10, endurance: 10, strength: 10, luck: 10, madness: 1, value: 50 } });
+    const weak   = makeMonster({ id: 'weak', traits: { speed: 1, endurance: 1, strength: 1, luck: 1, madness: 1, value: 50 } });
+    let legendWins = 0;
+    let legendSurges = 0;
+    for (let i = 0; i < 30; i++) {
+      setSeed(`legend-surge-${i}`);
+      const { winner, events } = simulateRace([legend, weak], 1000);
+      if (winner.id === 'legend') {
+        legendWins++;
+        if (events.surgeId === 'legend') legendSurges++;
+      } else {
+        expect(events.surgeId).toBeNull();
+      }
+    }
+    expect(legendWins).toBeGreaterThan(0);
+    expect(legendSurges).toBe(legendWins);
+  });
+
+  it('events default to null/null shape when both chances are 0', () => {
+    config.surgeChance = 0;
+    config.legendarySurgeChance = 0;
+    config.collapseChance = 0;
+    const monsters = [makeMonster({ id: 'a' }), makeMonster({ id: 'b' })];
+    const { events } = simulateRace(monsters, 1000);
+    expect(events).toEqual({ surgeId: null, collapseId: null });
   });
 });

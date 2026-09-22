@@ -1,5 +1,6 @@
 // Race simulation logic (server version with seeded RNG)
-import { randomInt, random } from '../utils/random.js';
+import { randomInt, random, rollChance, selectRandom } from '../utils/random.js';
+import { config } from '../config.js';
 
 /**
  * Calculate a monster's race performance score
@@ -23,6 +24,31 @@ function calculatePerformance(monster) {
 }
 
 /**
+ * Roll rare, guaranteed-outcome performance events for a race.
+ * Surge only ever applies to the natural winner (widens their margin —
+ * never changes who wins). Collapse only ever applies to a random
+ * non-winner (crushes them to dead last). Both are payout-neutral since
+ * payouts key off winnerId, never finish position.
+ * @param {object[]} naturalOrder - performances sorted by natural performance, descending
+ * @returns {{surgeId: string|null, collapseId: string|null}}
+ */
+function rollPerformanceEvents(naturalOrder) {
+  const winner = naturalOrder[0];
+  const nonWinners = naturalOrder.slice(1);
+
+  const surgeChance = winner.monster.isLegendary
+    ? config.legendarySurgeChance
+    : config.surgeChance;
+  const surgeId = rollChance(surgeChance) ? winner.id : null;
+
+  const collapseId = nonWinners.length > 0 && rollChance(config.collapseChance)
+    ? selectRandom(nonWinners).id
+    : null;
+
+  return { surgeId, collapseId };
+}
+
+/**
  * Simulate a race and generate frame-by-frame progress
  * Uses seeded RNG for deterministic outcome
  * @param {object[]} monsters - Array of racing monsters
@@ -38,7 +64,22 @@ export function simulateRace(monsters, duration = 8000) {
     finalPosition: 0,
   }));
 
-  // Determine final positions based on performance
+  // Natural order (before events) determines event eligibility: surge can
+  // only land on the monster that was already winning; collapse can only
+  // land on a monster that wasn't.
+  performances.sort((a, b) => b.performance - a.performance);
+  const events = rollPerformanceEvents(performances);
+
+  if (events.surgeId) {
+    const surger = performances.find(p => p.id === events.surgeId);
+    surger.performance += randomInt(150, 300);
+  }
+  if (events.collapseId) {
+    const collapser = performances.find(p => p.id === events.collapseId);
+    collapser.performance -= randomInt(200, 350);
+  }
+
+  // Determine final positions based on (possibly event-adjusted) performance
   performances.sort((a, b) => b.performance - a.performance);
   performances.forEach((perf, index) => {
     perf.finalPosition = index + 1;
@@ -98,6 +139,7 @@ export function simulateRace(monsters, duration = 8000) {
     })),
     frames,
     duration,
+    events,
   };
 }
 

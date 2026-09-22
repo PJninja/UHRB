@@ -10,6 +10,10 @@ const initialGameState = {
   currentBet: null,  // { raceId, monsterId, amount }
 };
 
+// Mirrors server/src/config.js `mercyBalance` — a display threshold only,
+// never used for validation (the server remains authoritative for balance).
+export const MERCY_BALANCE = 10;
+
 // Create persisted store for client state
 export const gameState = persistedStore('gameState', initialGameState);
 
@@ -24,6 +28,7 @@ export const serverRaceState = writable({
   timeRemaining: 0,
   winner: null,
   rankings: [],
+  events: null,
   raceDuration: null,
   raceStartedAt: null,
 });
@@ -61,6 +66,7 @@ export function updateServerRaceState(raceData) {
     timeRemaining: raceData.timeRemaining,
     winner: raceData.winner || null,
     rankings: raceData.rankings || [],
+    events: raceData.events || null,
     raceDuration: raceData.raceDuration || null,
     raceStartedAt: raceData.raceStartedAt || null,
   });
@@ -180,3 +186,18 @@ export const currentBet = derived(gameState, $state => $state.currentBet);
 export const raceState = derived(serverRaceState, $state => $state.state);
 export const nextRaceTime = derived(serverRaceState, $state => $state.nextRaceTime);
 export const currentRaceId = derived(serverRaceState, $state => $state.raceId);
+
+// Per-monster share of the total candy pool wagered so far this race, for the
+// crowd-wager bar. pct is 0 when nobody has bet yet (avoids a NaN divide-by-zero).
+export const betShares = derived(serverRaceState, $state => {
+  const totals = $state.betTotals || {};
+  const pool = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
+  return $state.monsters.map(monster => {
+    const amount = totals[monster.id] || 0;
+    return {
+      monsterId: monster.id,
+      amount,
+      pct: pool > 0 ? amount / pool : 0,
+    };
+  });
+});

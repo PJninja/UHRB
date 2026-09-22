@@ -148,6 +148,9 @@
               {:else}
                 <span class="result-badge result-watch">WATCHED</span>
               {/if}
+              {#if race.mercyRescued}
+                <span class="result-badge result-broken" title="Bottomed out — rescued by the mercy floor">BROKE</span>
+              {/if}
             </div>
           </div>
         {/each}
@@ -442,6 +445,12 @@
     color: var(--border-ancient);
   }
 
+  .result-broken {
+    color: #8a8a90;
+    border-color: #5a5a62;
+    border-style: dashed;
+  }
+
   .result-net {
     font-family: 'Cinzel', serif;
     font-size: 0.9rem;
@@ -486,6 +495,11 @@
 
     .log-bet {
       display: none;
+    }
+
+    .log-result {
+      flex-wrap: wrap;
+      row-gap: 0.25rem;
     }
 
     .footer-actions {
