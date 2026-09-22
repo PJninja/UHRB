@@ -109,7 +109,19 @@
       <button class="about-btn" on:click={() => push('/about')}>About</button>
     </div>
 
-    <RaceTimer />
+    <RaceTimer>
+      <button
+        slot="action"
+        class="horror-toc-toggle"
+        aria-label="Jump to a horror"
+        aria-expanded={tocOpen}
+        on:click={() => (tocOpen = !tocOpen)}
+      >
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+      </button>
+    </RaceTimer>
 
     {#if $serverRaceState.state === 'waiting' || $serverRaceState.state === 'closed'}
       <CrowdWagerBar monsters={$monsters} shares={$betShares} selectedMonsterId={validBet?.monsterId} />
@@ -141,17 +153,6 @@
       </aside>
     </div>
   </div>
-
-  <button
-    class="horror-toc-toggle"
-    aria-label="Jump to a horror"
-    aria-expanded={tocOpen}
-    on:click={() => (tocOpen = !tocOpen)}
-  >
-    <span class="bar"></span>
-    <span class="bar"></span>
-    <span class="bar"></span>
-  </button>
 
   {#if tocOpen}
     <button class="toc-backdrop" aria-label="Close horror list" on:click={() => (tocOpen = false)}></button>
@@ -273,6 +274,8 @@
   }
 
   /* ── Mobile: jump-to-horror table of contents ───────── */
+  /* Rendered into RaceTimer's "action" slot, so it shares the timer's
+     sticky panel on mobile instead of floating as its own FAB. */
   .horror-toc-toggle {
     display: none;
   }
@@ -283,21 +286,18 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      position: fixed;
-      right: 1.25rem;
-      bottom: 1.25rem;
-      width: 52px;
-      height: 52px;
-      background: var(--bg-card);
-      border: 3px solid var(--border-ancient);
+      gap: 4px;
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      background: var(--bg-secondary);
+      border: 2px solid var(--border-ancient);
       cursor: pointer;
-      z-index: 40;
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      align-self: center;
     }
 
     .horror-toc-toggle .bar {
-      width: 22px;
+      width: 18px;
       height: 2px;
       background: var(--text-accent);
     }
@@ -315,8 +315,8 @@
 
   .horror-toc {
     position: fixed;
+    top: 6rem;
     right: 1rem;
-    bottom: 5.25rem;
     width: min(280px, calc(100vw - 2rem));
     max-height: 60vh;
     overflow-y: auto;

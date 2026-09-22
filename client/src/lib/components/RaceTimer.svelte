@@ -50,6 +50,7 @@
       <div class="urgency-warning">Time Running Out!</div>
     {/if}
   </div>
+  <slot name="action" />
 </div>
 
 <style>
