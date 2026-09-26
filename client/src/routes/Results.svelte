@@ -1,9 +1,13 @@
 <script>
+  import { tick } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { history } from '../lib/stores/history.js';
   import { candies } from '../lib/stores/game.js';
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import RichText from '../lib/components/RichText.svelte';
+  import CandyStream from '../lib/components/CandyStream.svelte';
+
+  let candyStream;
 
   // Get the most recent race from history
   $: latestRace = $history.length > 0 ? $history[0] : null;
@@ -69,6 +73,21 @@
     push('/history');
   }
 
+  // ── Candy particle stream (idea 2): on a win, candies visibly fly from
+  // the winner banner into the balance readout as the payout lands. ──
+  function fireBalanceStream(node, isWin) {
+    if (isWin) {
+      // The winner banner is a later sibling still being mounted when this
+      // action runs — wait a tick so it exists in the live DOM before firing.
+      tick().then(() => {
+        const fromEl = document.querySelector('.winner-banner .winner-icon');
+        const toEl = document.querySelector('.current-balance');
+        candyStream?.fire(fromEl, toEl, { count: Math.min(20, 6 + Math.round(payout / 8)) });
+      });
+    }
+    return {};
+  }
+
   // Svelte action: animates a number counting from `from` to `to` as soon as the
   // node mounts. One-shot by nature — it replays only when the node itself is
   // recreated, which the {#key} block below guarantees on every new race.
@@ -99,6 +118,8 @@
 </script>
 
 <div class="results-page">
+  <CandyStream bind:this={candyStream} />
+
   <div class="header">
     <h1>Race Results</h1>
   </div>
@@ -127,6 +148,7 @@
           class:won={playerWon}
           class:lost={!playerWon}
           use:spotlightLossPanel={!playerWon}
+          use:fireBalanceStream={playerWon}
         >
           {#if playerWon}
             <h3 class="result-title win-title">Victory!</h3>

@@ -8,12 +8,25 @@
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import BettingSlip from '../lib/components/BettingSlip.svelte';
   import CrowdWagerBar from '../lib/components/CrowdWagerBar.svelte';
+  import CandyStream from '../lib/components/CandyStream.svelte';
   import RichText from '../lib/components/RichText.svelte';
 
   let selectedMonster = null;
   let canvas;
   let raf;
   let tocOpen = false;
+  let candyStream;
+
+  // ── Candy particle stream (idea 2): candies visibly fly from the
+  // balance display into the backed horror's card on bet placement. ──
+  function handleBetPlaced(event) {
+    selectedMonster = null;
+    const { monsterId, amount } = event.detail || {};
+    if (!monsterId) return;
+    const fromEl = document.querySelector('.betting-section .balance-display');
+    const toEl = document.getElementById(`monster-${monsterId}`);
+    candyStream?.fire(fromEl, toEl, { count: Math.min(16, 4 + Math.round((amount || 0) / 5)) });
+  }
 
   function scrollToMonster(id) {
     document.getElementById(`monster-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -88,6 +101,7 @@
 
 <div class="home-page">
   <canvas bind:this={canvas} class="rune-bg" aria-hidden="true"></canvas>
+  <CandyStream bind:this={candyStream} />
   <div class="content">
     <div class="header">
       <h1>UHRB</h1>
@@ -131,9 +145,10 @@
                 selected={monster.id === selectedMonster?.id}
                 hasBet={validBet !== null && monster.id === validBet.monsterId}
                 betTotal={$serverRaceState.betTotals?.[monster.id] || 0}
+                odds={$serverRaceState.odds?.[monster.id]}
                 onSelect={handleSelectMonster}
                 disabled={validBet !== null && monster.id !== validBet.monsterId}
-                on:placed={() => { selectedMonster = null; }}
+                on:placed={handleBetPlaced}
               />
             </div>
           {/each}
@@ -141,7 +156,7 @@
       </div>
 
       <aside class="betting-section">
-        <BettingSlip {selectedMonster} monsters={$monsters} on:placed={() => { selectedMonster = null; }} />
+        <BettingSlip {selectedMonster} monsters={$monsters} on:placed={handleBetPlaced} />
       </aside>
     </div>
   </div>

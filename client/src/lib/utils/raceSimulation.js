@@ -170,10 +170,10 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null, s
   const maxFinishTime = Math.max(...performances.map(p => p.finishTime));
   const totalFrames = Math.ceil((maxFinishTime / 1000) * fps);
 
-  // Pre-compute easing table for the full extended duration
+  // Pre-compute pacing table for the full extended duration
   const easeTable = new Float64Array(totalFrames + 1);
   for (let i = 0; i <= totalFrames; i++) {
-    easeTable[i] = easeInOut(i / totalFrames);
+    easeTable[i] = paceCurve(i / totalFrames);
   }
 
   const outliers = hasServerEvent
@@ -322,7 +322,21 @@ export function simulateRace(monsters, duration = 8000, serverRankings = null, s
   };
 }
 
-/** Smooth ease-in-out curve: maps t ∈ [0,1] → [0,1]. */
-function easeInOut(t) {
-  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+/**
+ * Base pacing curve: maps t ∈ [0,1] → cumulative distance (unscaled).
+ *
+ * Quick quadratic ramp out of the gate, then a constant cruise slope
+ * forever after — deliberately never decelerates. Every monster's raw
+ * curve is a prefix of this shared curve (rescaled to hit 100% at its
+ * own finish frame), so a curve that slows down near t=1 would force
+ * *every* monster whose finish lands near the race's overall span to
+ * crawl into the line regardless of stats. Holding a steady cruise
+ * means separation/surges come only from the per-monster bias and
+ * noise below, so closers still close instead of everyone drifting
+ * to a stop together.
+ */
+const PACE_RAMP = 0.12;
+function paceCurve(t) {
+  if (t >= PACE_RAMP) return PACE_RAMP / 2 + (t - PACE_RAMP);
+  return (t * t) / (2 * PACE_RAMP);
 }

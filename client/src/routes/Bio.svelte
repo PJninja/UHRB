@@ -7,6 +7,7 @@
   import RichText from '../lib/components/RichText.svelte';
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import StatBar from '../lib/components/StatBar.svelte';
+  import FavorMeter from '../lib/components/FavorMeter.svelte';
 
   export let params = {};
 
@@ -25,14 +26,6 @@
       .finally(() => { bioLoading = false; });
   }
 
-  const FAVOR_TIERS = {
-    1: { label: 'Despised',   desc: 'The crowd has little faith. Those who bet here may be rewarded.' },
-    2: { label: 'Overlooked', desc: 'Few expect greatness here. There may be value in that doubt.' },
-    3: { label: 'Noticed',    desc: 'A known quantity. The crowd has formed its opinion.' },
-    4: { label: 'Favoured',   desc: 'Popular among bettors. Their confidence is already priced in.' },
-    5: { label: 'Beloved',    desc: 'The crowd adores this horror. Expectations are high — and costly.' },
-  };
-
   // Color mapping for each stat (matching RichText colors for thematic consistency)
   const STAT_COLORS = {
     speed:     '#9b87c5',   // glow → eldritch purple pulse
@@ -40,11 +33,6 @@
     madness:   '#6ecfa0',   // madness → unsettling green
     strength:  'var(--eldritch-red)', // blood → red
   };
-
-  $: favorColor = !monster ? '#6b5a44'
-    : monster.audienceFavor <= 2 ? '#4a5fa5'
-    : monster.audienceFavor === 3 ? '#6b5a44'
-    : 'var(--candy-color)';
 
   const LEGENDARY_GLYPHS = ['⚝', 'ᛟ', 'ᚱ', 'ᛞ'];
 
@@ -239,18 +227,11 @@
         {#if monster.audienceFavor}
           <div class="favor-card card">
             <h3 class="aside-heading">Audience Favor</h3>
-            <div class="favor-bar" style="--favor-color: {favorColor}">
-              {#each Array(5) as _, i}
-                <div class="favor-pip" class:filled={i < monster.audienceFavor}></div>
-              {/each}
-            </div>
-            <div class="favor-label">
-              <span class="favor-tier">{FAVOR_TIERS[monster.audienceFavor]?.label}</span>
-              <span class="favor-desc">{FAVOR_TIERS[monster.audienceFavor]?.desc}</span>
-            </div>
-            {#if monster.isReturningChampion}
-              <p class="favor-champion-note">Champion status has elevated their standing with the crowd.</p>
-            {/if}
+            <FavorMeter
+              audienceFavor={monster.audienceFavor}
+              isChampion={monster.isReturningChampion}
+              variant="full"
+            />
           </div>
         {/if}
 
@@ -561,56 +542,6 @@
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
-  }
-
-  /* ── Audience Favor ── */
-  .favor-bar {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 0.75rem;
-  }
-
-  .favor-pip {
-    width: 12px;
-    height: 28px;
-    border: 1px solid var(--border-ancient);
-    background: var(--bg-secondary);
-    transition: background 0.2s ease;
-  }
-
-  .favor-pip.filled {
-    background: var(--favor-color);
-    border-color: var(--favor-color);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--favor-color) 60%, transparent);
-  }
-
-  .favor-label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .favor-tier {
-    font-family: 'Cinzel', serif;
-    font-size: 1.1rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--favor-color);
-  }
-
-  .favor-desc {
-    font-size: 1.25rem;
-    font-style: italic;
-    color: var(--text-secondary);
-    line-height: 1.5;
-  }
-
-  .favor-champion-note {
-    margin: 0.75rem 0 0;
-    font-size: 0.8rem;
-    color: var(--candy-color);
-    font-style: italic;
-    opacity: 0.8;
   }
 
   /* ── Stats card ── */

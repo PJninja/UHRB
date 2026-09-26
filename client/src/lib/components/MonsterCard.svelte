@@ -4,12 +4,14 @@
   import { monsterHistory } from '../stores/history.js';
   import { candies, placeBet } from '../stores/game.js';
   import RichText from './RichText.svelte';
+  import FavorMeter from './FavorMeter.svelte';
 
   export let monster;
   export let compact = true;
   export let selected = false;
   export let hasBet = false;
   export let betTotal = 0;  // Total candies bet on this monster
+  export let odds = null;   // Payout multiplier for this monster, e.g. 3.5
   export let onSelect = null;
   export let disabled = false;
 
@@ -18,6 +20,23 @@
   $: record = $monsterHistory[monster.id];
   $: isChampion = monster.isReturningChampion === true;
   $: isLegendary = monster.isLegendary === true;
+
+  // ── Sigil burn (idea 1): a one-shot occult sigil flashes over the card
+  // whenever hasBet flips on, regardless of which flow placed the bet. ──
+  let sigilActive = false;
+  let prevHasBet = hasBet;
+  // Combined into one reactive block so the comparison always runs against
+  // the PRE-update value of prevHasBet — as two separate `$:` statements,
+  // Svelte reorders them by dependency (the assignment runs first since the
+  // if-check reads what it writes), which silently defeats the edge check.
+  $: {
+    if (hasBet && !prevHasBet) sigilActive = true;
+    prevHasBet = hasBet;
+  }
+
+  function handleSigilAnimEnd(event) {
+    if (event.animationName === 'sigil-fade') sigilActive = false;
+  }
 
   function viewBio() {
     push(`/bio/${monster.id}`);
@@ -52,8 +71,9 @@
     if (!miniCanBet) return;
     miniBetError = null;
     try {
-      await placeBet(monster.id, Math.floor(Number(miniBetAmount)));
-      dispatch('placed');
+      const amount = Math.floor(Number(miniBetAmount));
+      await placeBet(monster.id, amount);
+      dispatch('placed', { monsterId: monster.id, amount });
     } catch {
       miniBetError = 'Bet failed — try again.';
     }
@@ -66,57 +86,67 @@
 </script>
 
 <div class="monster-card card" class:selected class:has-bet={hasBet} class:compact class:is-champion={isChampion} class:is-legendary={isLegendary}>
+  {#if sigilActive}
+    <div class="sigil-burn" aria-hidden="true" on:animationend={handleSigilAnimEnd}>
+      <svg viewBox="0 0 200 200">
+        <circle class="sigil-ring" cx="100" cy="100" r="80" />
+        <polygon class="sigil-tri" points="100,30 165,150 35,150" />
+        <circle class="sigil-core" cx="100" cy="100" r="6" />
+      </svg>
+    </div>
+  {/if}
+
+  {#if isLegendary || isChampion || record?.appearances > 0}
+    <div class="status-strip">
+      {#if isLegendary}
+        <span class="status-chip status-legendary">⚝ Legendary</span>
+      {/if}
+      {#if isChampion}
+        <span class="status-chip status-champion">ᛟ Champion</span>
+      {/if}
+      {#if record?.appearances > 0}
+        <span class="status-chip status-veteran">
+          {record.appearances} {record.appearances === 1 ? 'race' : 'races'} · {record.wins} {record.wins === 1 ? 'win' : 'wins'}
+        </span>
+      {/if}
+    </div>
+  {/if}
+
   <div class="monster-header">
     <h3><RichText text={monster.name} /></h3>
-    <div class="monster-origin">
-      <span class="origin-label">Origin</span>
-      <span class="origin-value"><RichText text={monster.location} /></span>
-    </div>
-    {#if isChampion}
-      <div class="champion-badge">ᛟ Returning Champion</div>
-    {/if}
+    <p class="monster-origin"><RichText text={monster.location} /></p>
   </div>
 
+  {#if monster.audienceFavor}
+    <FavorMeter audienceFavor={monster.audienceFavor} variant="compact" {odds} />
+  {/if}
+
   {#if betTotal > 0}
-    <div class="bet-total-indicator">
-      <span class="bet-icon">💰</span>
-      <span class="bet-amount">{betTotal} ✦ bet</span>
-    </div>
+    <div class="bet-total-indicator">{betTotal} ✦ wagered</div>
   {/if}
 
   {#if compact}
     <div class="monster-compact-info">
       <div class="description"><RichText text={monster.description} tag="p" /></div>
 
-      <div class="quick-info">
-        <div class="info-row">
-          <span class="label">Racing Style:</span>
-          <span class="value"><RichText text={monster.racingStyle} /></span>
-        </div>
-        <div class="info-row">
-          <span class="label">Body Type:</span>
-          <span class="value">{monster.bodyType}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">Temperament:</span>
-          <span class="value"><RichText text={monster.temperament} /></span>
-        </div>
+      <div class="trait-pills">
+        <span class="trait-pill"><RichText text={monster.racingStyle} /></span>
+        <span class="trait-pill"><RichText text={monster.temperament} /></span>
+        <span class="trait-pill">{monster.bodyType}</span>
       </div>
 
-      {#if record?.appearances > 0}
-        <div class="veteran-record">
-          <span class="veteran-glyph">ᛟ</span>
-          <span>VETERAN</span>
-          <span class="veteran-sep">·</span>
-          <span>{record.appearances} races</span>
-          <span class="veteran-sep">·</span>
-          <span>{record.wins} {record.wins === 1 ? 'win' : 'wins'}</span>
-        </div>
-      {/if}
-
       <div class="actions">
-        <button class="button button-secondary" on:click={viewBio}>
-          View Details
+        <button
+          class="button button-secondary dossier-btn"
+          on:click={viewBio}
+          aria-label="View {monster.name}'s dossier"
+          title="View Dossier"
+        >
+          <svg class="dossier-eye" viewBox="0 0 32 20" aria-hidden="true">
+            <path class="eye-lid" d="M1,10 Q16,-3 31,10 Q16,23 1,10 Z" />
+            <circle class="eye-iris" cx="16" cy="10" r="5.5" />
+            <circle class="eye-pupil" cx="16" cy="10" r="2.1" />
+          </svg>
         </button>
         {#if onSelect}
           <button class="button button-primary" on:click={handleSelect} disabled={disabled}>
@@ -237,6 +267,85 @@
   .monster-card {
     position: relative;
     transition: all 0.2s ease;
+    /* Grid rows stretch each card's wrapper to match the tallest sibling in
+       the row (CSS Grid's default align-items: stretch); fill that height
+       here so the visible card border grows to match, not just the wrapper. */
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Sigil burn (idea 1): occult sigil flashes over the card on bet ── */
+  .sigil-burn {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .sigil-burn svg {
+    width: 65%;
+    height: 65%;
+    overflow: visible;
+    animation: sigil-fade 1.3s ease-out forwards;
+  }
+
+  .sigil-ring {
+    fill: none;
+    stroke: var(--candy-color);
+    stroke-width: 2;
+    stroke-dasharray: 503;
+    stroke-dashoffset: 503;
+    animation: sigil-draw 0.7s ease-out forwards;
+    filter: drop-shadow(0 0 6px rgba(201, 169, 97, 0.8));
+  }
+
+  .sigil-tri {
+    fill: none;
+    stroke: var(--eldritch-purple);
+    stroke-width: 2;
+    stroke-dasharray: 400;
+    stroke-dashoffset: 400;
+    animation: sigil-draw 0.7s ease-out 0.15s forwards;
+    filter: drop-shadow(0 0 6px rgba(155, 135, 197, 0.7));
+  }
+
+  .sigil-core {
+    fill: var(--candy-color);
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: sigil-flash 0.5s ease-out 0.6s forwards;
+  }
+
+  @keyframes sigil-draw {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes sigil-flash {
+    0%   { opacity: 0; transform: scale(1); }
+    40%  { opacity: 1; transform: scale(2.2); }
+    100% { opacity: 0; transform: scale(0.8); }
+  }
+
+  @keyframes sigil-fade {
+    0%, 55% { opacity: 1; transform: scale(1); }
+    100%    { opacity: 0; transform: scale(1.15); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sigil-burn svg,
+    .sigil-ring,
+    .sigil-tri,
+    .sigil-core {
+      animation: none;
+    }
+    .sigil-burn {
+      display: none;
+    }
   }
 
   .monster-card.is-champion {
@@ -308,34 +417,35 @@
     }
   }
 
-  .champion-badge {
-    display: inline-block;
-    margin-top: 0.4rem;
-    font-family: 'Cinzel', serif;
-    font-size: 0.65rem;
-    color: var(--candy-color);
-    letter-spacing: 3px;
-    text-transform: uppercase;
-  }
-
-  .veteran-record {
+  /* ── Status strip — champion/legendary/veteran collapsed into one row
+     of small chips instead of three separately-styled blocks ── */
+  .status-strip {
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .status-chip {
     font-family: 'Cinzel', serif;
-    font-size: 0.72rem;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--border-ancient);
+    background: var(--bg-secondary);
     color: var(--text-secondary);
-    letter-spacing: 1px;
-    margin: 0.75rem 0 0;
+    white-space: nowrap;
   }
 
-  .veteran-glyph {
+  .status-legendary {
+    color: var(--eldritch-purple);
+    border-color: var(--eldritch-purple);
+  }
+
+  .status-champion {
     color: var(--candy-color);
-    font-size: 0.8rem;
-  }
-
-  .veteran-sep {
-    opacity: 0.5;
+    border-color: var(--candy-color);
   }
 
   .monster-card.selected {
@@ -371,110 +481,151 @@
     }
   }
 
+  .monster-header {
+    margin-bottom: 0.6rem;
+  }
+
   .monster-header h3 {
     color: var(--eldritch-purple);
-    margin: 0 0 0.5rem 0;
+    margin: 0;
     font-size: 1.3rem;
     letter-spacing: 2px;
   }
 
   .monster-origin {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    margin-top: 0.4rem;
-    padding: 0.3rem 0.6rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-ancient);
-  }
-
-  .origin-label {
-    font-family: 'Cinzel', serif;
-    font-size: 0.55rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-  }
-
-  .origin-value {
-    font-size: 0.9rem;
+    margin: 0.2rem 0 0;
+    font-size: 0.82rem;
     font-style: italic;
-    font-weight: 600;
-    color: var(--text-primary);
+    color: var(--text-secondary);
   }
 
   .bet-total-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    margin-top: 0.75rem;
-    background: linear-gradient(135deg, rgba(201, 169, 97, 0.1) 0%, rgba(201, 169, 97, 0.05) 100%);
-    border: 2px solid var(--candy-color);
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
-
-  .bet-icon {
-    font-size: 1.2rem;
-  }
-
-  .bet-amount {
+    padding: 0.35rem 0.6rem;
+    margin-bottom: 0.6rem;
+    border-left: 3px solid var(--candy-color);
+    background: rgba(201, 169, 97, 0.08);
     color: var(--candy-color);
-    font-weight: 700;
+    font-weight: 600;
+    font-size: 0.85rem;
   }
 
   .description {
-    margin: 1rem 0;
+    margin: 0 0 0.9rem;
     line-height: 1.6;
     font-size: 0.95rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
-  .quick-info {
-    background: var(--bg-secondary);
-    padding: 1rem;
-    margin: 1rem 0;
-    border: 2px solid var(--border-ancient);
-  }
-
-  .info-row {
+  /* ── Trait pills — Racing Style / Temperament / Body Type read as lore
+     tags to decode over time, not a stat table. Color comes from each
+     field's own RichText tag, so no extra styling is needed here. ── */
+  .trait-pills {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid rgba(74, 69, 56, 0.3);
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
   }
 
-  .info-row:last-child {
-    border-bottom: none;
-  }
-
-  .info-row .label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
+  .trait-pill {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-ancient);
     color: var(--text-secondary);
   }
 
-  .info-row .value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text-primary);
+  /* Grows to absorb the leftover height when a card is stretched to match
+     a taller sibling in its grid row, so the actions row still lines up
+     across cards instead of leaving a gap at the very bottom. */
+  .monster-compact-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
 
   .actions {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: auto;
+    padding-top: 1rem;
   }
 
-  .actions button {
+  .actions .button-primary {
     flex: 1;
     font-size: 0.75rem;
     padding: 0.6rem 1rem;
+  }
+
+  /* ── Dossier eye — an idly-watching eye that invites a click rather than
+     a labeled button, in keeping with "details live on the Bio page." ── */
+  .dossier-btn {
+    flex-shrink: 0;
+    width: 48px;
+    height: 44px;
+    padding: 0.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dossier-eye {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    animation: eye-blink 5s ease-in-out infinite;
+  }
+
+  .eye-lid {
+    fill: var(--bg-primary);
+    stroke: var(--text-secondary);
+    stroke-width: 1.5;
+    transition: stroke 0.25s ease;
+  }
+
+  .eye-iris {
+    fill: var(--eldritch-purple);
+    transition: fill 0.25s ease;
+    animation: eye-drift 6s ease-in-out infinite;
+    transform-origin: 16px 10px;
+  }
+
+  .eye-pupil {
+    fill: var(--bg-primary);
+  }
+
+  .dossier-btn:hover .eye-lid,
+  .dossier-btn:focus-visible .eye-lid {
+    stroke: var(--candy-color);
+  }
+
+  .dossier-btn:hover .eye-iris,
+  .dossier-btn:focus-visible .eye-iris {
+    fill: var(--candy-color);
+    filter: drop-shadow(0 0 4px rgba(201, 169, 97, 0.8));
+    animation-play-state: paused;
+  }
+
+  @keyframes eye-drift {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(2px); }
+  }
+
+  @keyframes eye-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .eye-iris,
+    .dossier-eye {
+      animation: none;
+    }
   }
 
   /* ── Mobile mini betting slip ── */

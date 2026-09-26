@@ -34,7 +34,23 @@
 </script>
 
 <div class="race-timer" class:urgent={isUrgent} class:very-urgent={isVeryUrgent}>
-  <div class="timer-icon">⏳</div>
+  <div class="timer-icon" aria-hidden="true">
+    <svg viewBox="0 0 48 48">
+      <circle class="timer-icon-ring" cx="24" cy="24" r="17" />
+      <g class="timer-icon-ticks">
+        <line x1="42" y1="24" x2="45" y2="24" />
+        <line x1="36.73" y1="36.73" x2="38.85" y2="38.85" />
+        <line x1="24" y1="42" x2="24" y2="45" />
+        <line x1="11.27" y1="36.73" x2="9.15" y2="38.85" />
+        <line x1="6" y1="24" x2="3" y2="24" />
+        <line x1="11.27" y1="11.27" x2="9.15" y2="9.15" />
+        <line x1="24" y1="6" x2="24" y2="3" />
+        <line x1="36.73" y1="11.27" x2="38.85" y2="9.15" />
+      </g>
+      <path class="timer-icon-glass" d="M17,15 L31,15 L24,24 L31,33 L17,33 L24,24 Z" />
+      <circle class="timer-icon-sand" cx="24" cy="24" r="1.3" />
+    </svg>
+  </div>
   <div class="timer-content">
     <div class="timer-label">Next Race Begins In</div>
     <div class="timer-display">
@@ -87,8 +103,50 @@
   }
 
   .timer-icon {
-    font-size: 3rem;
-    line-height: 1;
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    color: var(--eldritch-purple);
+  }
+
+  .timer-icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .timer-icon-ring {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    opacity: 0.55;
+  }
+
+  .timer-icon-ticks line {
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    opacity: 0.75;
+  }
+
+  .timer-icon-glass {
+    fill: currentColor;
+    fill-opacity: 0.18;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+  }
+
+  .timer-icon-sand {
+    fill: currentColor;
+  }
+
+  .urgent .timer-icon {
+    color: var(--candy-color);
+  }
+
+  .very-urgent .timer-icon {
+    color: var(--eldritch-red);
   }
 
   .timer-content {
@@ -169,7 +227,8 @@
     }
 
     .timer-icon {
-      font-size: 2.4rem;
+      width: 2.4rem;
+      height: 2.4rem;
     }
 
     .timer-content {

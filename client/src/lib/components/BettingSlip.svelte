@@ -29,8 +29,9 @@
     if (canPlaceBet && selectedMonster) {
       betError = null;
       try {
-        await placeBet(selectedMonster.id, Math.floor(Number(betAmount)));
-        dispatch('placed');
+        const amount = Math.floor(Number(betAmount));
+        await placeBet(selectedMonster.id, amount);
+        dispatch('placed', { monsterId: selectedMonster.id, amount });
       } catch {
         betError = 'Bet failed — please try again.';
       }
