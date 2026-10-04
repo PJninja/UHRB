@@ -190,32 +190,41 @@
       ctx.globalAlpha = 1;
     }
 
-    function draw() {
+    function renderFrame(step) {
       ctx.clearRect(0, 0, W, H);
-      const elapsed = performance.now() - startTime;
+      const elapsed = reducedMotion ? 0 : performance.now() - startTime;
       for (const g of glowLayers) drawGlow(g, elapsed);
       for (const entry of particleLayers) {
         for (const p of entry.particles) {
           drawParticle(entry.layer, p);
-          stepParticle(entry, p);
+          if (step) stepParticle(entry, p);
         }
       }
+    }
+
+    function draw() {
+      renderFrame(true);
       raf = requestAnimationFrame(draw);
     }
 
     const ro = new ResizeObserver(() => {
-      W = canvas.width = canvas.offsetWidth;
-      H = canvas.height = canvas.offsetHeight;
+      const w = canvas.offsetWidth, h = canvas.offsetHeight;
+      if (w === W && h === H) return;
+      W = canvas.width = w;
+      H = canvas.height = h;
+      // Resizing the backing store wipes the bitmap. Repaint immediately —
+      // ResizeObserver callbacks run before paint, so the blank canvas never
+      // reaches the screen. On mobile the page is taller than the viewport and
+      // its height changes whenever the commentary ticker wraps or resets,
+      // which otherwise flashed the whole backdrop.
+      renderFrame(false);
     });
     ro.observe(canvas);
 
     if (reducedMotion) {
       // Single static low-opacity frame — no animation loop, per the
       // reduced-motion convention MonsterCard.svelte already follows.
-      for (const g of glowLayers) drawGlow(g, 0);
-      for (const entry of particleLayers) {
-        for (const p of entry.particles) drawParticle(entry.layer, p);
-      }
+      renderFrame(false);
     } else {
       draw();
     }
