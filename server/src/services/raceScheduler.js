@@ -6,7 +6,7 @@ import { generateRaceMonsters } from './monsterGenerator.js';
 import { venues } from '../data/venueData.js';
 import { simulateRace, calculateOdds } from './raceSimulator.js';
 import { broadcast } from './broadcaster.js';
-import { resolveRaceBets } from '../state/sessionManager.js';
+import { resolveRaceBets, getPatronMonsterIds, clearFledPatrons, tickPatronCooldowns } from '../state/sessionManager.js';
 import { logger } from '../utils/logger.js';
 
 const log = logger.child({ module: 'raceScheduler' });
@@ -223,11 +223,25 @@ export function scheduleNextRace() {
   // Set seed for deterministic monster generation
   setSeed(raceSeed);
 
-  // Generate monsters: winner always returns, 20% chance others do too.
+  // Generate monsters: winner always returns, patronized survivors get a boosted
+  // independent roll, 20% chance other survivors do too.
   // Stamp isReturningChampion here while previousWinner still refers to the
   // prior race's winner — finishRace updates previousWinner after this point.
-  const monsters = generateRaceMonsters(null, previousMonsters, previousWinner);
+  const patronizedIds = getPatronMonsterIds();
+  const monsters = generateRaceMonsters(null, previousMonsters, previousWinner, patronizedIds);
   monsters.forEach(m => { m.isReturningChampion = previousWinner?.id === m.id; });
+
+  // Any patronized survivor from the race that just finished (excluding the
+  // winner, who always returns) that didn't make it into this new roster has
+  // fled — sever the bond server-side. The client detects the same fact
+  // independently by diffing the broadcast roster, no push needed here.
+  const newIds = new Set(monsters.map(m => m.id));
+  const fledIds = (previousMonsters || [])
+    .filter(m => (!previousWinner || m.id !== previousWinner.id) && patronizedIds.has(m.id) && !newIds.has(m.id))
+    .map(m => m.id);
+  if (fledIds.length > 0) clearFledPatrons(fledIds);
+  tickPatronCooldowns();
+
   previousMonsters = monsters;
 
   // Calculate odds based on visible stats

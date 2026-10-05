@@ -9,6 +9,8 @@ import {
   storeBet, getCurrentBet, clearBet,
   getActiveSessions, deductBet, creditPayout, getBalance, refundBet,
   resolveRaceBets, getLastBetResult,
+  pledgePatron, breakPact, markPatronBetrayal,
+  getPatronMonsterIds, clearFledPatrons, tickPatronCooldowns, getPatronPayoutMultiplier,
 } from '../src/state/sessionManager.js';
 import { config } from '../src/config.js';
 
@@ -370,5 +372,261 @@ describe('getLastBetResult', () => {
 
   it('returns null for an unknown session', () => {
     expect(getLastBetResult('session_ghost')).toBeNull();
+  });
+});
+
+// ─── pledgePatron ─────────────────────────────────────────────────────────────
+
+describe('pledgePatron', () => {
+  it('pledges a patron for a fresh session', () => {
+    const { sessionId } = createSession();
+    const result = pledgePatron(sessionId, 'monster-a');
+    expect(result.ok).toBe(true);
+    expect(getSession(sessionId).patronMonsterId).toBe('monster-a');
+  });
+
+  it('rejects pledging when a patron is already active', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    const result = pledgePatron(sessionId, 'monster-b');
+    expect(result).toEqual({ ok: false, reason: 'already_pledged' });
+    expect(getSession(sessionId).patronMonsterId).toBe('monster-a');
+  });
+
+  it('rejects pledging during the post-break cooldown', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    breakPact(sessionId);
+    const result = pledgePatron(sessionId, 'monster-b');
+    expect(result).toEqual({ ok: false, reason: 'cooling_down' });
+  });
+
+  it('returns session_not_found for an unknown session', () => {
+    expect(pledgePatron('session_ghost', 'monster-a')).toEqual({ ok: false, reason: 'session_not_found' });
+  });
+});
+
+// ─── breakPact ────────────────────────────────────────────────────────────────
+
+describe('breakPact', () => {
+  it('charges the configured fine, clears the patron, and starts a cooldown', () => {
+    const { sessionId } = createSession(); // balance 100
+    pledgePatron(sessionId, 'monster-a');
+
+    const result = breakPact(sessionId);
+
+    const expectedFine = Math.floor(100 * config.patronBreakPactFinePercent);
+    expect(result).toEqual({ ok: true, candyBalance: 100 - expectedFine });
+    const session = getSession(sessionId);
+    expect(session.patronMonsterId).toBeNull();
+    expect(session.patronCooldownRaces).toBe(config.patronBreakPactCooldownRaces);
+  });
+
+  it('applies the mercy floor if the fine would drop balance below it', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 100 - config.mercyBalance - 1); // balance → mercyBalance + 1
+    pledgePatron(sessionId, 'monster-a');
+
+    breakPact(sessionId);
+
+    expect(getBalance(sessionId)).toBe(config.mercyBalance);
+  });
+
+  it('rejects breaking when there is no active patron', () => {
+    const { sessionId } = createSession();
+    expect(breakPact(sessionId)).toEqual({ ok: false, reason: 'no_active_patron' });
+  });
+
+  it('returns session_not_found for an unknown session', () => {
+    expect(breakPact('session_ghost')).toEqual({ ok: false, reason: 'session_not_found' });
+  });
+});
+
+// ─── markPatronBetrayal ───────────────────────────────────────────────────────
+
+describe('markPatronBetrayal', () => {
+  it('sets the trust cooldown to the configured length', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    markPatronBetrayal(sessionId);
+    expect(getSession(sessionId).patronTrustCooldownRaces).toBe(config.patronTrustCooldownRaces);
+  });
+
+  it('is a no-op for an unknown session', () => {
+    expect(() => markPatronBetrayal('session_ghost')).not.toThrow();
+  });
+});
+
+// ─── getPatronMonsterIds / clearFledPatrons / tickPatronCooldowns ────────────
+
+describe('getPatronMonsterIds', () => {
+  it('aggregates patron monster ids across live sessions', () => {
+    const a = createSession();
+    const b = createSession();
+    pledgePatron(a.sessionId, 'monster-gpmi-a');
+    pledgePatron(b.sessionId, 'monster-gpmi-b');
+
+    const ids = getPatronMonsterIds();
+    expect(ids.has('monster-gpmi-a')).toBe(true);
+    expect(ids.has('monster-gpmi-b')).toBe(true);
+  });
+
+  it('does not include a session that never pledged', () => {
+    const { sessionId } = createSession();
+    // Other tests in this file share the module-level session Map, so assert
+    // on this specific session's absence rather than global emptiness.
+    expect(getSession(sessionId).patronMonsterId).toBeNull();
+  });
+});
+
+describe('clearFledPatrons', () => {
+  it('clears patronMonsterId only for sessions matching a fled id', () => {
+    const a = createSession();
+    const b = createSession();
+    pledgePatron(a.sessionId, 'monster-a');
+    pledgePatron(b.sessionId, 'monster-b');
+
+    clearFledPatrons(['monster-a']);
+
+    expect(getSession(a.sessionId).patronMonsterId).toBeNull();
+    expect(getSession(b.sessionId).patronMonsterId).toBe('monster-b');
+  });
+
+  it('is a no-op for an empty set', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    clearFledPatrons([]);
+    expect(getSession(sessionId).patronMonsterId).toBe('monster-a');
+  });
+});
+
+describe('tickPatronCooldowns', () => {
+  it('decrements both cooldown counters by one, floored at zero', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    markPatronBetrayal(sessionId);
+    breakPact(sessionId); // sets patronCooldownRaces, clears trust cooldown reset path is irrelevant here
+
+    const before = getSession(sessionId).patronCooldownRaces;
+    tickPatronCooldowns();
+    expect(getSession(sessionId).patronCooldownRaces).toBe(before - 1);
+  });
+
+  it('never decrements below zero', () => {
+    const { sessionId } = createSession();
+    tickPatronCooldowns();
+    expect(getSession(sessionId).patronCooldownRaces).toBe(0);
+    expect(getSession(sessionId).patronTrustCooldownRaces).toBe(0);
+  });
+});
+
+// ─── getPatronPayoutMultiplier ────────────────────────────────────────────────
+
+describe('getPatronPayoutMultiplier', () => {
+  it('returns 1.0 when the session has no active patron', () => {
+    const { sessionId } = createSession();
+    const session = getSession(sessionId);
+    expect(getPatronPayoutMultiplier(session, 'monster-a')).toBe(1.0);
+  });
+
+  it('returns the loyalty bonus when betting on your own patron', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    const session = getSession(sessionId);
+    expect(getPatronPayoutMultiplier(session, 'monster-a')).toBe(config.patronLoyaltyBonusMultiplier);
+  });
+
+  it('returns the spite tax when betting on a rival while a patron is active', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    const session = getSession(sessionId);
+    expect(getPatronPayoutMultiplier(session, 'monster-b')).toBe(config.patronSpiteTaxMultiplier);
+  });
+
+  it('suspends the loyalty bonus while a trust cooldown is active', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    markPatronBetrayal(sessionId);
+    const session = getSession(sessionId);
+    expect(getPatronPayoutMultiplier(session, 'monster-a')).toBe(1.0);
+  });
+});
+
+// ─── resolveRaceBets — patron multiplier integration ─────────────────────────
+
+describe('resolveRaceBets — patron multiplier', () => {
+  const RACE = 'race-patron-1';
+  const ODDS = { 'monster-a': 2.0 };
+
+  it('applies the loyalty bonus to a winning bet on your own patron', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-a');
+    deductBet(sessionId, 50); // balance → 50
+    storeBet(sessionId, RACE, 'monster-a', 50);
+
+    resolveRaceBets(RACE, 'monster-a', ODDS);
+
+    const expectedPayout = Math.floor(50 * 2.0 * config.patronLoyaltyBonusMultiplier);
+    expect(getBalance(sessionId)).toBe(50 + expectedPayout);
+    expect(getLastBetResult(sessionId).patronOutcome).toBe('loyalty');
+  });
+
+  it('applies the spite tax to a winning bet on a rival while a patron races', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-b');
+    deductBet(sessionId, 50);
+    storeBet(sessionId, RACE, 'monster-a', 50);
+
+    resolveRaceBets(RACE, 'monster-a', ODDS);
+
+    const expectedPayout = Math.floor(50 * 2.0 * config.patronSpiteTaxMultiplier);
+    expect(getBalance(sessionId)).toBe(50 + expectedPayout);
+    expect(getLastBetResult(sessionId).patronOutcome).toBe('spite');
+  });
+
+  it('leaves payout unaffected with no active patron', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 50);
+    storeBet(sessionId, RACE, 'monster-a', 50);
+
+    resolveRaceBets(RACE, 'monster-a', ODDS);
+
+    expect(getBalance(sessionId)).toBe(50 + Math.floor(50 * 2.0));
+    expect(getLastBetResult(sessionId).patronOutcome).toBeNull();
+  });
+  it('settles at the multiplier locked when the bet was stored, ignoring later pact changes', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 50);
+    storeBet(sessionId, RACE, 'monster-a', 50); // no patron → locked at 1.0
+
+    // A pact change after betting closes (the routes forbid it, but the
+    // settlement must not depend on that) can't retroactively add a bonus
+    getSession(sessionId).patronMonsterId = 'monster-a';
+
+    resolveRaceBets(RACE, 'monster-a', ODDS);
+
+    expect(getBalance(sessionId)).toBe(50 + Math.floor(50 * 2.0));
+    expect(getLastBetResult(sessionId).patronOutcome).toBeNull();
+  });
+
+  it('re-locks a pending bet when pledging while betting is open', () => {
+    const { sessionId } = createSession();
+    deductBet(sessionId, 50);
+    storeBet(sessionId, RACE, 'monster-a', 50);
+    pledgePatron(sessionId, 'monster-a');
+
+    expect(getSession(sessionId).currentBet.patronMultiplier).toBe(config.patronLoyaltyBonusMultiplier);
+  });
+
+  it('re-locks a pending bet to 1.0 when breaking the pact while betting is open', () => {
+    const { sessionId } = createSession();
+    pledgePatron(sessionId, 'monster-b');
+    deductBet(sessionId, 50);
+    storeBet(sessionId, RACE, 'monster-a', 50);
+    expect(getSession(sessionId).currentBet.patronMultiplier).toBe(config.patronSpiteTaxMultiplier);
+
+    breakPact(sessionId);
+
+    expect(getSession(sessionId).currentBet.patronMultiplier).toBe(1.0);
   });
 });

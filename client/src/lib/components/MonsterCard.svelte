@@ -3,6 +3,7 @@
   import { push } from 'svelte-spa-router';
   import { monsterHistory } from '../stores/history.js';
   import { candies, placeBet } from '../stores/game.js';
+  import { patron, isDistrusted as isPatronDistrusted } from '../stores/patron.js';
   import RichText from './RichText.svelte';
   import FavorMeter from './FavorMeter.svelte';
 
@@ -20,6 +21,8 @@
   $: record = $monsterHistory[monster.id];
   $: isChampion = monster.isReturningChampion === true;
   $: isLegendary = monster.isLegendary === true;
+  $: isPatron = $patron.monsterId === monster.id;
+  $: isDistrusted = isPatron && $isPatronDistrusted;
 
   // ── Sigil burn (idea 1): a one-shot occult sigil flashes over the card
   // whenever hasBet flips on, regardless of which flow placed the bet. ──
@@ -85,7 +88,7 @@
   }
 </script>
 
-<div class="monster-card card" class:selected class:has-bet={hasBet} class:compact class:is-champion={isChampion} class:is-legendary={isLegendary}>
+<div class="monster-card card" class:selected class:has-bet={hasBet} class:compact class:is-champion={isChampion} class:is-legendary={isLegendary} class:is-patron={isPatron} class:is-patron-distrusted={isDistrusted}>
   {#if sigilActive}
     <div class="sigil-burn" aria-hidden="true" on:animationend={handleSigilAnimEnd}>
       <svg viewBox="0 0 200 200">
@@ -113,7 +116,12 @@
   {/if}
 
   <div class="monster-header">
-    <h3><RichText text={monster.name} /></h3>
+    <h3>
+      <RichText text={monster.name} />
+      {#if isPatron}
+        <span class="patron-glyph" title="Your patron" aria-label="Your patron">⛧</span>
+      {/if}
+    </h3>
     <p class="monster-origin"><RichText text={monster.location} /></p>
   </div>
 
@@ -132,7 +140,7 @@
       <div class="trait-pills">
         <span class="trait-pill"><RichText text={monster.racingStyle} /></span>
         <span class="trait-pill"><RichText text={monster.temperament} /></span>
-        <span class="trait-pill">{monster.bodyType}</span>
+        <span class="trait-pill"><RichText text={monster.bodyType} /></span>
       </div>
 
       <div class="actions">
@@ -209,7 +217,7 @@
         <div class="info-grid">
           <div class="info-item">
             <span class="label">Body Type:</span>
-            <span class="value">{monster.bodyType}</span>
+            <span class="value"><RichText text={monster.bodyType} /></span>
           </div>
           <div class="info-item">
             <span class="label">Distinctive Features:</span>
@@ -490,6 +498,32 @@
     margin: 0;
     font-size: 1.3rem;
     letter-spacing: 2px;
+  }
+
+  /* ── Patron name — a steady green glow marks the horror you've pledged to.
+     Deliberately a different hue from legendary's gold shimmer so the two
+     "special" states never read as the same thing. Turns blood-red while
+     trust is broken, matching the pact chip's own color language. ── */
+  .monster-card.is-patron .monster-header h3 {
+    color: var(--eldritch-green);
+    text-shadow: 0 0 10px rgba(61, 122, 92, 0.5);
+  }
+
+  .monster-card.is-patron-distrusted .monster-header h3 {
+    color: var(--eldritch-red);
+    text-shadow: 0 0 10px rgba(139, 58, 58, 0.5);
+  }
+
+  .patron-glyph {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.8em;
+    color: var(--eldritch-green);
+    vertical-align: middle;
+  }
+
+  .monster-card.is-patron-distrusted .patron-glyph {
+    color: var(--eldritch-red);
   }
 
   .monster-origin {

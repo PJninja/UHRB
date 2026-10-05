@@ -136,7 +136,7 @@ export function generateMonster() {
 // Each time the champion returns their crowd favor grows, increasing value (capped at 100).
 const CHAMPION_FAVOR_BOOST = 20;
 
-export function generateRaceMonsters(count = null, previousMonsters = null, previousWinner = null) {
+export function generateRaceMonsters(count = null, previousMonsters = null, previousWinner = null, patronizedIds = new Set()) {
   if (previousWinner?.isLegendary) previousWinner = null;
   const monsterCount = count || randomInt(4, 6);
 
@@ -156,15 +156,27 @@ export function generateRaceMonsters(count = null, previousMonsters = null, prev
     monsters = [];
   }
 
-  // 20% chance to also bring back 1–2 other runners (excluding the winner)
+  // Patronized survivors (excluding the winner, who already returns above) get an
+  // independent high-probability roll each, ahead of the random lottery below.
+  // Any that fail the roll, or win it but lose out on slot space, are left out —
+  // the caller (raceScheduler) detects this as "fled" by diffing ids.
   const eligible = (previousMonsters || []).filter(
     m => !previousWinner || m.id !== previousWinner.id
   );
-  if (eligible.length > 0 && rollChance(20)) {
-    const maxReturners = Math.min(2, eligible.length, monsterCount - monsters.length - 1);
+  const patronizedEligible = eligible.filter(m => patronizedIds.has(m.id));
+  const regularEligible = eligible.filter(m => !patronizedIds.has(m.id));
+
+  for (const patron of shuffle(patronizedEligible)) {
+    if (monsterCount - monsters.length <= 1) break; // keep a slot free for the legendary check
+    if (rollChance(config.patronReturnBoostChance)) monsters.push(patron);
+  }
+
+  // 20% chance to also bring back 1–2 other runners (excluding the winner)
+  if (regularEligible.length > 0 && rollChance(20)) {
+    const maxReturners = Math.min(2, regularEligible.length, monsterCount - monsters.length - 1);
     if (maxReturners > 0) {
       const reuseCount = randomInt(1, maxReturners);
-      const shuffled = shuffle(eligible);
+      const shuffled = shuffle(regularEligible);
       monsters.push(...shuffled.slice(0, reuseCount));
     }
   }

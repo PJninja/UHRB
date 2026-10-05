@@ -1,8 +1,20 @@
 // REST API routes
-import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet, getCurrentBet, refundBet, getLastBetResult } from '../state/sessionManager.js';
+import { createSession, validateSession, storeBet, getSession, deductBet, creditPayout, getBalance, clearBet, getCurrentBet, refundBet, getLastBetResult, pledgePatron, breakPact, markPatronBetrayal } from '../state/sessionManager.js';
 import { getCurrentRace, getLastFinishedRace, isBettingAllowed, addBetToTotal, decrementBetTotal, racePayload, sanitizeMonster } from '../services/raceScheduler.js';
 import { validatePayout } from '../services/payoutValidator.js';
 import { issueToken, verifyToken } from '../utils/balanceToken.js';
+
+/**
+ * The client-facing view of a session's patron state.
+ * @param {object|null} session
+ */
+function patronView(session) {
+  return session ? {
+    monsterId: session.patronMonsterId,
+    cooldownRaces: session.patronCooldownRaces,
+    trustCooldownRaces: session.patronTrustCooldownRaces,
+  } : null;
+}
 
 /**
  * Register REST API routes
@@ -47,6 +59,7 @@ export async function registerRestRoutes(fastify) {
         connectedAt: session.connectedAt,
         expiresAt: session.expiresAt,
       } : null,
+      patron: patronView(session),
     };
   });
 
@@ -160,11 +173,83 @@ export async function registerRestRoutes(fastify) {
     // Update bet totals for this race
     addBetToTotal(monsterId, amount);
 
+    // Betting on a rival while an active patron races is a betrayal — mark it
+    // regardless of whether this bet ultimately wins.
+    const session = getSession(sessionId);
+    if (session?.patronMonsterId && session.patronMonsterId !== monsterId) {
+      markPatronBetrayal(sessionId);
+    }
+
     return {
       success: true,
       bet: { raceId, monsterId, amount },
       candyBalance: deduction.candyBalance,
       balanceToken: issueToken(deduction.candyBalance),
+      patron: patronView(session),
+    };
+  });
+
+  // Pledge patronage to a horror in the current race
+  fastify.post('/api/patron', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { sessionId, monsterId } = request.body ?? {};
+
+    if (!sessionId || !monsterId) {
+      return reply.code(400).send({ error: 'Missing required fields: sessionId, monsterId' });
+    }
+
+    if (!validateSession(sessionId)) {
+      return reply.code(401).send({ error: 'Invalid or expired session' });
+    }
+
+    // Pacts only change while betting is open — once the race starts the
+    // winner is in the broadcast, and a pledge then would be free money.
+    if (!isBettingAllowed()) {
+      return reply.code(409).send({ error: 'betting_closed' });
+    }
+
+    const race = getCurrentRace();
+    const monster = race.monsters.find(m => m.id === monsterId);
+    if (!monster) {
+      return reply.code(400).send({ error: 'Monster not in this race' });
+    }
+    if (monster.isLegendary) {
+      return reply.code(400).send({ error: 'Legendary horrors cannot be patronized' });
+    }
+
+    const result = pledgePatron(sessionId, monsterId);
+    if (!result.ok) {
+      return reply.code(409).send({ error: result.reason });
+    }
+
+    return { success: true, patron: patronView(getSession(sessionId)) };
+  });
+
+  // Break an active patron pact early — costs a candy fine and starts a cooldown
+  fastify.delete('/api/patron', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const { sessionId } = request.body ?? {};
+
+    if (!sessionId) {
+      return reply.code(400).send({ error: 'Missing required field: sessionId' });
+    }
+
+    if (!validateSession(sessionId)) {
+      return reply.code(401).send({ error: 'Invalid or expired session' });
+    }
+
+    if (!isBettingAllowed()) {
+      return reply.code(409).send({ error: 'betting_closed' });
+    }
+
+    const result = breakPact(sessionId);
+    if (!result.ok) {
+      return reply.code(409).send({ error: result.reason });
+    }
+
+    return {
+      success: true,
+      candyBalance: result.candyBalance,
+      balanceToken: issueToken(result.candyBalance),
+      patron: patronView(getSession(sessionId)),
     };
   });
 
@@ -207,6 +292,7 @@ export async function registerRestRoutes(fastify) {
         rankings: sanitizeRankings(race?.rankings),
         odds: stored.odds,
         payout: stored.payout,
+        patronOutcome: stored.patronOutcome ?? null,
         bet: { raceId: stored.raceId, monsterId: stored.monsterId, amount: stored.amount },
         error: null,
         candyBalance,
@@ -232,6 +318,7 @@ export async function registerRestRoutes(fastify) {
       rankings: sanitizeRankings(result.rankings),
       odds: result.odds,
       payout: result.payout,
+      patronOutcome: result.patronOutcome ?? null,
       bet: result.bet,
       error: result.error,
       candyBalance,

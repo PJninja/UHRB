@@ -22,7 +22,7 @@ import { buildApp } from '../../src/app.js';
 import { getCurrentRace, isBettingAllowed, racePayload } from '../../src/services/raceScheduler.js';
 import { issueToken } from '../../src/utils/balanceToken.js';
 // Real (unmocked) sessionManager — used to set up server-side state directly
-import { storeBet as storeBetDirect, deductBet as deductBetDirect, resolveRaceBets } from '../../src/state/sessionManager.js';
+import { storeBet as storeBetDirect, deductBet as deductBetDirect, resolveRaceBets, pledgePatron, getSession } from '../../src/state/sessionManager.js';
 
 const RACE_ID = 'race-test-001';
 const MONSTER_A = {
@@ -165,6 +165,17 @@ describe('GET /api/session/:sessionId/validate', () => {
   it('returns null candyBalance for an invalid session', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/session/session_unknown/validate' });
     expect(res.json().candyBalance).toBeNull();
+  });
+
+  it('returns patron state (no active patron) for a fresh session', async () => {
+    const { sessionId } = (await app.inject({ method: 'POST', url: '/api/session' })).json();
+    const res = await app.inject({ method: 'GET', url: `/api/session/${sessionId}/validate` });
+    expect(res.json().patron).toEqual({ monsterId: null, cooldownRaces: 0, trustCooldownRaces: 0 });
+  });
+
+  it('returns null patron for an invalid session', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/session/session_unknown/validate' });
+    expect(res.json().patron).toBeNull();
   });
 });
 
@@ -399,6 +410,149 @@ describe('POST /api/race/:raceId/bet', () => {
     expect(res.statusCode).toBe(200);
     // 100 − 40 (dead bet) + 40 (refund) − 25 (new bet) = 75
     expect(res.json().candyBalance).toBe(75);
+  });
+
+  it('marks a betrayal when betting on a rival while a patron is active', async () => {
+    const sessionId = await createSession();
+    pledgePatron(sessionId, MONSTER_B.id);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, monsterId: MONSTER_A.id, amount: 10 }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(getSession(sessionId).patronTrustCooldownRaces).toBeGreaterThan(0);
+    // The response carries the post-betrayal patron state so the client can sync immediately
+    expect(res.json().patron.trustCooldownRaces).toBe(getSession(sessionId).patronTrustCooldownRaces);
+  });
+
+  it('does not mark a betrayal when betting on your own patron', async () => {
+    const sessionId = await createSession();
+    pledgePatron(sessionId, MONSTER_A.id);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/race/${RACE_ID}/bet`,
+      payload: betPayload({ sessionId, monsterId: MONSTER_A.id, amount: 10 }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(getSession(sessionId).patronTrustCooldownRaces).toBe(0);
+  });
+});
+
+// ─── POST /api/patron ─────────────────────────────────────────────────────────
+
+function patronPayload(overrides = {}) {
+  return {
+    sessionId: 'WILL_BE_REPLACED',
+    monsterId: MONSTER_A.id,
+    ...overrides,
+  };
+}
+
+describe('POST /api/patron', () => {
+  it('pledges a patron successfully', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId }) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      success: true,
+      patron: { monsterId: MONSTER_A.id, cooldownRaces: 0, trustCooldownRaces: 0 },
+    });
+  });
+
+  it('returns 400 when required fields are missing', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: {} });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 for an unknown session', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId: 'session_ghost' }) });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 400 when the monster is not in the current race', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId, monsterId: 'monster-unknown' }) });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for a legendary monster', async () => {
+    getCurrentRace.mockReturnValue(waitingRace({ monsters: [{ ...MONSTER_A, isLegendary: true }, MONSTER_B] }));
+    const sessionId = await createSession();
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId }) });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 409 once betting has closed', async () => {
+    isBettingAllowed.mockReturnValue(false);
+    const sessionId = await createSession();
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId }) });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('betting_closed');
+    expect(getSession(sessionId).patronMonsterId).toBeNull();
+  });
+
+  it('returns 409 when a patron is already pledged', async () => {
+    const sessionId = await createSession();
+    await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId }) });
+    const res = await app.inject({ method: 'POST', url: '/api/patron', payload: patronPayload({ sessionId, monsterId: MONSTER_B.id }) });
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+// ─── DELETE /api/patron ───────────────────────────────────────────────────────
+
+describe('DELETE /api/patron', () => {
+  it('breaks the pact, charges a fine, and returns the updated balance', async () => {
+    const sessionId = await createSession();
+    pledgePatron(sessionId, MONSTER_A.id);
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/patron', payload: { sessionId } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+    expect(res.json().candyBalance).toBeLessThan(100);
+    expect(res.json().balanceToken).toBeTruthy();
+    expect(getSession(sessionId).patronMonsterId).toBeNull();
+    expect(getSession(sessionId).patronCooldownRaces).toBeGreaterThan(0);
+    expect(res.json().patron).toEqual({
+      monsterId: null,
+      cooldownRaces: getSession(sessionId).patronCooldownRaces,
+      trustCooldownRaces: 0,
+    });
+  });
+
+  it('returns 400 when sessionId is missing', async () => {
+    const res = await app.inject({ method: 'DELETE', url: '/api/patron', payload: {} });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 401 for an unknown session', async () => {
+    const res = await app.inject({ method: 'DELETE', url: '/api/patron', payload: { sessionId: 'session_ghost' } });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 409 once betting has closed, without charging a fine', async () => {
+    const sessionId = await createSession();
+    pledgePatron(sessionId, MONSTER_A.id);
+    isBettingAllowed.mockReturnValue(false);
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/patron', payload: { sessionId } });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('betting_closed');
+    expect(getSession(sessionId).patronMonsterId).toBe(MONSTER_A.id);
+    expect(getSession(sessionId).candyBalance).toBe(100);
+  });
+
+  it('returns 409 when there is no active patron', async () => {
+    const sessionId = await createSession();
+    const res = await app.inject({ method: 'DELETE', url: '/api/patron', payload: { sessionId } });
+    expect(res.statusCode).toBe(409);
   });
 });
 

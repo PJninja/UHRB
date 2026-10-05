@@ -119,4 +119,43 @@ describe('validatePayout', () => {
     expect(result.winner).toEqual(MONSTER_A);
     expect(result.rankings).toHaveLength(2);
   });
+
+  it('applies the patron multiplier locked onto the bet, matching resolveRaceBets', () => {
+    getCurrentRace.mockReturnValue(finishedRace());
+    getCurrentBet.mockReturnValue({ raceId: RACE_ID, monsterId: MONSTER_A.id, amount: 100, patronMultiplier: 1.1 });
+
+    const result = validatePayout(SESSION, { monsterId: MONSTER_A.id, amount: 100 });
+
+    expect(result.payout).toBe(275); // floor(100 × 2.5 × 1.1)
+    expect(result.patronOutcome).toBe('loyalty');
+  });
+
+  it('reports a spite outcome when the locked multiplier is below 1', () => {
+    getCurrentRace.mockReturnValue(finishedRace());
+    getCurrentBet.mockReturnValue({ raceId: RACE_ID, monsterId: MONSTER_A.id, amount: 100, patronMultiplier: 0.9 });
+
+    const result = validatePayout(SESSION, { monsterId: MONSTER_A.id, amount: 100 });
+
+    expect(result.payout).toBe(225); // floor(100 × 2.5 × 0.9)
+    expect(result.patronOutcome).toBe('spite');
+  });
+
+  it('treats a bet without a locked multiplier as 1.0', () => {
+    getCurrentRace.mockReturnValue(finishedRace());
+    getCurrentBet.mockReturnValue({ raceId: RACE_ID, monsterId: MONSTER_A.id, amount: 100 });
+
+    const result = validatePayout(SESSION, { monsterId: MONSTER_A.id, amount: 100 });
+
+    expect(result.payout).toBe(250);
+    expect(result.patronOutcome).toBeNull();
+  });
+
+  it('pays nothing when the bet lost, whatever multiplier was locked', () => {
+    getCurrentRace.mockReturnValue(finishedRace());
+    getCurrentBet.mockReturnValue({ raceId: RACE_ID, monsterId: MONSTER_B.id, amount: 100, patronMultiplier: 1.1 });
+
+    const result = validatePayout(SESSION, { monsterId: MONSTER_B.id, amount: 100 });
+
+    expect(result.payout).toBe(0);
+  });
 });

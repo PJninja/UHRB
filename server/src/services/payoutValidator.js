@@ -30,6 +30,7 @@ export function validatePayout(sessionId, claimedBet) {
     rankings: [],
     odds: 0,
     payout: 0,
+    patronOutcome: null,
     error: null,
   };
 
@@ -73,12 +74,17 @@ export function validatePayout(sessionId, claimedBet) {
   // Check if user won
   const won = actualBet.monsterId === race.winner.id;
 
-  // Payout = bet × odds. Value is already baked into the odds (70% weight),
-  // so no separate multiplier is needed here.
+  // Payout = bet × odds × patron multiplier. Value is already baked into the
+  // odds (70% weight); the patron multiplier was locked onto the bet when it
+  // was placed — the same value resolveRaceBets reads — so this recompute
+  // can never diverge from what was already credited at race finish.
   let payout = 0;
+  let patronOutcome = null;
   if (won) {
     const odds = race.odds[actualBet.monsterId] || 1.5;
-    payout = Math.floor(actualBet.amount * odds);
+    const patronMultiplier = actualBet.patronMultiplier ?? 1.0;
+    payout = Math.floor(actualBet.amount * odds * patronMultiplier);
+    patronOutcome = patronMultiplier > 1 ? 'loyalty' : patronMultiplier < 1 ? 'spite' : null;
   }
 
   log.info({ sessionId, won, betAmount: actualBet.amount, monsterId: actualBet.monsterId, payout }, 'payout validated');
@@ -89,6 +95,7 @@ export function validatePayout(sessionId, claimedBet) {
   result.rankings = race.rankings || [];
   result.odds = race.odds[actualBet.monsterId] || 0;
   result.payout = payout;
+  result.patronOutcome = patronOutcome;
   result.bet = actualBet; // Return the server's version of the bet
 
   return result;

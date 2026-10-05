@@ -4,6 +4,7 @@
   import { placeBet, clearBet } from '../stores/game.js';
   import { formatOdds } from '../utils/odds.js';
   import RichText from './RichText.svelte';
+  import { patron } from '../stores/patron.js';
 
   const dispatch = createEventDispatcher();
 
@@ -24,6 +25,9 @@
   $: odds = $serverRaceState.odds ?? {};
   $: selectedOdds = selectedMonster ? (odds[selectedMonster.id] ?? 0) : 0;
   $: potentialPayout = selectedMonster ? Math.floor(betAmount * selectedOdds) : 0;
+
+  $: isBetrayingPatron = selectedMonster && $patron.monsterId && selectedMonster.id !== $patron.monsterId;
+  $: isDistrustedPatronBet = selectedMonster && $patron.monsterId === selectedMonster.id && $patron.trustCooldownRaces > 0;
 
   async function handlePlaceBet() {
     if (canPlaceBet && selectedMonster) {
@@ -105,6 +109,11 @@
             <span class="value text-candy">{potentialPayout} ✦</span>
           </div>
         </div>
+        {#if isBetrayingPatron}
+          <p class="patron-warning">This is not your patron. They will not forgive a wandering eye.</p>
+        {:else if isDistrustedPatronBet}
+          <p class="patron-warning">Your patron doesn't yet trust you — no favor will be shown this race.</p>
+        {/if}
       {/if}
 
       <div class="bet-amount-input">
@@ -353,6 +362,13 @@
     color: var(--eldritch-red);
     font-size: 0.8rem;
     font-style: italic;
+    text-align: center;
+    margin: 0;
+  }
+
+  .patron-warning {
+    color: var(--eldritch-red);
+    font-size: 0.95rem;
     text-align: center;
     margin: 0;
   }

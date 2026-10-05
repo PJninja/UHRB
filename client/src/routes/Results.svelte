@@ -3,6 +3,7 @@
   import { push } from 'svelte-spa-router';
   import { history } from '../lib/stores/history.js';
   import { candies } from '../lib/stores/game.js';
+  import { patron } from '../lib/stores/patron.js';
   import RaceTimer from '../lib/components/RaceTimer.svelte';
   import RichText from '../lib/components/RichText.svelte';
   import CandyStream from '../lib/components/CandyStream.svelte';
@@ -16,6 +17,7 @@
   $: playerBet = latestRace?.bet;
   $: playerWon = latestRace?.won || false;
   $: payout = latestRace?.payout || 0;
+  $: patronOutcome = latestRace?.patronOutcome || null;
   $: commentaryLog = latestRace?.commentary || [];
 
   // Calculate net profit/loss
@@ -172,6 +174,15 @@
                   use:countUp={{ from: 0, to: netChange, duration: 900, prefix: '+', suffix: ' ✦' }}
                 >+0 ✦</span>
               </div>
+              {#if patronOutcome === 'loyalty'}
+                <div class="detail-row patron-line">
+                  <span class="value patron-loyalty">Winnings swelled — patron's favor</span>
+                </div>
+              {:else if patronOutcome === 'spite'}
+                <div class="detail-row patron-line">
+                  <span class="value patron-spite">Winnings diminished — spite tax</span>
+                </div>
+              {/if}
             </div>
           {:else}
             <h3 class="result-title lose-title">Defeat</h3>
@@ -232,6 +243,9 @@
               {/if}
               {#if playerBet && monster.id === playerBet.monsterId}
                 <span class="bet-marker">★</span>
+              {/if}
+              {#if monster.id === $patron.monsterId}
+                <span class="patron-marker" title="Your patron" aria-label="Your patron">⛧</span>
               {/if}
             </div>
           {/each}
@@ -543,6 +557,24 @@
     font-size: 1.3rem;
   }
 
+  .detail-row.patron-line {
+    justify-content: center;
+  }
+
+  .patron-line .value {
+    font-size: 0.85rem;
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  .patron-loyalty {
+    color: var(--candy-color);
+  }
+
+  .patron-spite {
+    color: var(--eldritch-red);
+  }
+
   .no-bet-message {
     text-align: center;
     padding: 2rem;
@@ -635,6 +667,11 @@
 
   .ranking-row .bet-marker {
     color: var(--candy-color);
+    font-size: 1.5rem;
+  }
+
+  .ranking-row .patron-marker {
+    color: var(--eldritch-green);
     font-size: 1.5rem;
   }
 

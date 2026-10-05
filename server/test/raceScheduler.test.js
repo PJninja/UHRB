@@ -4,7 +4,12 @@ vi.mock('../src/utils/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }));
 vi.mock('../src/services/broadcaster.js', () => ({ broadcast: vi.fn() }));
-vi.mock('../src/state/sessionManager.js', () => ({ resolveRaceBets: vi.fn(() => 0) }));
+vi.mock('../src/state/sessionManager.js', () => ({
+  resolveRaceBets: vi.fn(() => 0),
+  getPatronMonsterIds: vi.fn(() => new Set()),
+  clearFledPatrons: vi.fn(),
+  tickPatronCooldowns: vi.fn(),
+}));
 vi.mock('../src/services/raceSimulator.js', () => ({
   calculateOdds: vi.fn(() => ({})),
   // Never actually reached in these tests (they stop advancing timers before
@@ -27,6 +32,7 @@ import { randomInt, rollChance, selectRandom } from '../src/utils/random.js';
 import { scheduleNextRace, getCurrentRace } from '../src/services/raceScheduler.js';
 import { venues } from '../src/data/venueData.js';
 import { config } from '../src/config.js';
+import { getPatronMonsterIds, clearFledPatrons, tickPatronCooldowns } from '../src/state/sessionManager.js';
 
 function makeMonster(id, value) {
   return {
@@ -48,6 +54,10 @@ beforeEach(() => {
   // Default: never skip, so tests unrelated to the skip roll stay deterministic.
   rollChance.mockReturnValue(false);
   generateRaceMonsters.mockReset();
+  getPatronMonsterIds.mockReset();
+  getPatronMonsterIds.mockReturnValue(new Set());
+  clearFledPatrons.mockReset();
+  tickPatronCooldowns.mockReset();
 });
 
 afterEach(() => {
@@ -247,5 +257,50 @@ describe('race venue', () => {
     scheduleNextRace();
 
     expect(getCurrentRace().venue).toEqual(venues[3]);
+  });
+});
+
+describe('patron return-boost and fled detection', () => {
+  it('passes the current patron monster ids into generateRaceMonsters', () => {
+    getPatronMonsterIds.mockReturnValue(new Set(['patron-1']));
+    generateRaceMonsters.mockReturnValue([makeMonster('patron-1', 50)]);
+
+    scheduleNextRace();
+
+    expect(generateRaceMonsters).toHaveBeenCalledWith(null, expect.any(Array), null, new Set(['patron-1']));
+  });
+
+  it('clears the pledge for a patronized survivor that failed to return', () => {
+    getPatronMonsterIds.mockReturnValue(new Set(['survivor']));
+    // Seed previousMonsters with a roster that includes the patronized survivor.
+    generateRaceMonsters.mockReturnValueOnce([makeMonster('survivor', 50), makeMonster('other', 50)]);
+    scheduleNextRace();
+
+    // Next race: the survivor does not come back.
+    generateRaceMonsters.mockReturnValueOnce([makeMonster('fresh', 50)]);
+    clearFledPatrons.mockClear();
+    scheduleNextRace();
+
+    expect(clearFledPatrons).toHaveBeenCalledWith(['survivor']);
+  });
+
+  it('does not clear a patronized monster that did return', () => {
+    getPatronMonsterIds.mockReturnValue(new Set(['survivor']));
+    generateRaceMonsters.mockReturnValueOnce([makeMonster('survivor', 50)]);
+    scheduleNextRace();
+
+    generateRaceMonsters.mockReturnValueOnce([makeMonster('survivor', 50), makeMonster('fresh', 50)]);
+    clearFledPatrons.mockClear();
+    scheduleNextRace();
+
+    expect(clearFledPatrons).not.toHaveBeenCalled();
+  });
+
+  it('calls tickPatronCooldowns exactly once per scheduled race', () => {
+    generateRaceMonsters.mockReturnValue([makeMonster('a', 50)]);
+
+    scheduleNextRace();
+
+    expect(tickPatronCooldowns).toHaveBeenCalledTimes(1);
   });
 });

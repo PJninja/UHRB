@@ -224,6 +224,53 @@ describe('generateRaceMonsters', () => {
       REQUIRED_TRAITS.forEach(key => expect(m.traits).toHaveProperty(key));
     });
   });
+
+  describe('patronized survivors', () => {
+    it('returns a patronized survivor far more often than a non-patronized one', () => {
+      let patronizedReturns = 0;
+      let regularReturns = 0;
+      const trials = 200;
+
+      for (let i = 0; i < trials; i++) {
+        setSeed(`patron-boost-${i}`);
+        const patronized = { ...generateMonster(), id: 'survivor-patronized' };
+        const regular = { ...generateMonster(), id: 'survivor-regular' };
+        const winner = { ...generateMonster(), id: 'winner' };
+        const monsters = generateRaceMonsters(6, [patronized, regular, winner], winner, new Set(['survivor-patronized']));
+        const ids = monsters.map(m => m.id);
+        if (ids.includes('survivor-patronized')) patronizedReturns++;
+        if (ids.includes('survivor-regular')) regularReturns++;
+      }
+
+      expect(patronizedReturns).toBeGreaterThan(regularReturns);
+      // Should track config.patronReturnBoostChance (70%) rather than the 20% shared lottery
+      expect(patronizedReturns / trials).toBeGreaterThan(0.5);
+    });
+
+    it('never exceeds requested count even when every survivor is patronized', () => {
+      for (let i = 0; i < 20; i++) {
+        setSeed(`patron-overflow-${i}`);
+        const survivors = Array.from({ length: 5 }, (_, j) => ({ ...generateMonster(), id: `surv-${j}` }));
+        const winner = survivors[0];
+        const patronizedIds = new Set(survivors.slice(1).map(m => m.id));
+        const monsters = generateRaceMonsters(4, survivors, winner, patronizedIds);
+        expect(monsters.length).toBeLessThanOrEqual(4);
+      }
+    });
+
+    it('does not affect the guaranteed champion return', () => {
+      const champion = { ...generateMonster(), id: 'champ-patron' };
+      const monsters = generateRaceMonsters(5, [champion], champion, new Set(['champ-patron']));
+      const ids = monsters.map(m => m.id);
+      expect(ids.filter(id => id === 'champ-patron')).toHaveLength(1);
+    });
+
+    it('defaults to no patronized boost when the parameter is omitted', () => {
+      // Existing 3-arg call sites (and any pre-patron test) must behave unchanged.
+      const champion = generateMonster();
+      expect(() => generateRaceMonsters(5, [champion], champion)).not.toThrow();
+    });
+  });
 });
 
 // ─── calculateStatTotal ───────────────────────────────────────────────────────

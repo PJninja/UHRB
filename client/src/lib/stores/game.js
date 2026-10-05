@@ -74,6 +74,11 @@ export function updateServerRaceState(raceData) {
   });
 }
 
+// Set to the server's response each time a bet is confirmed. Other stores
+// (patron.js) subscribe to pick up side effects of the bet, such as a
+// betrayal mark, without game.js having to import them.
+export const confirmedBet = writable(null);
+
 /**
  * Place a bet (calls server API)
  * @param {string} monsterId
@@ -106,6 +111,7 @@ export async function placeBet(monsterId, amount) {
   try {
     const response = await apiBet(raceState.raceId, session, monsterId, amount);
     setCandyBalance(response.candyBalance, response.balanceToken);
+    confirmedBet.set(response);
   } catch (error) {
     console.error('Server bet failed:', error);
     clearBet();

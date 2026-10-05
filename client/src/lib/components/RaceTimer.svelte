@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { nextRaceTime } from '../stores/game.js';
+  import PatronStatusChip from './PatronStatusChip.svelte';
 
   let timeRemaining = 0;
 
@@ -66,7 +67,10 @@
       <div class="urgency-warning">Time Running Out!</div>
     {/if}
   </div>
-  <slot name="action" />
+  <div class="timer-actions">
+    <slot name="action" />
+    <PatronStatusChip />
+  </div>
 </div>
 
 <style>
@@ -100,6 +104,13 @@
     50% {
       box-shadow: 0 0 20px rgba(139, 58, 58, 0.6), var(--shadow);
     }
+  }
+
+  .timer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
   }
 
   .timer-icon {

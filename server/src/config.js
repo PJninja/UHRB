@@ -57,4 +57,13 @@ export const config = {
   // Rolled independently per crowd-favorite horror — each one has this % chance
   // of getting no ghost bet at all, so a tie doesn't always light up both.
   phantomBetSkipChance: 10,
+
+  // Patron system — pledging to a horror boosts its return chance and carries
+  // a settlement-only payout multiplier. Displayed odds are never affected.
+  patronReturnBoostChance: 70,       // % chance a patronized survivor returns, independent per-monster roll
+  patronLoyaltyBonusMultiplier: 1.1, // payout multiplier when betting on your own active patron
+  patronSpiteTaxMultiplier: 0.9,     // payout multiplier when betting on a rival while your patron races
+  patronBreakPactFinePercent: 0.12,  // fraction of current balance charged on Break the Pact
+  patronBreakPactCooldownRaces: 3,   // races before you may pledge again after breaking a pact
+  patronTrustCooldownRaces: 2,       // races the loyalty bonus stays suspended after a betrayal bet
 };

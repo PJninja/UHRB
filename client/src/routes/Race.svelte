@@ -6,6 +6,7 @@
   import { serverRaceState, currentBet, candies, syncBalanceFromPayout, clearBet, MERCY_BALANCE } from '../lib/stores/game.js';
   import { sessionId } from '../lib/stores/session.js';
   import { addRaceToHistory } from '../lib/stores/history.js';
+  import { patron } from '../lib/stores/patron.js';
   import { simulateRace } from '../lib/utils/raceSimulation.js';
   import { validatePayout } from '../lib/services/api.js';
   import { randomInt } from '../lib/utils/random.js';
@@ -699,6 +700,7 @@
             bet: validation.bet,
             won: validation.won,
             payout: validation.payout,
+            patronOutcome: validation.patronOutcome ?? null,
             mercyRescued,
             timestamp: Date.now(),
             commentary: commentaryLog,
@@ -803,6 +805,7 @@
     {#each displayMonsters as { id, monster, position, velocityMult, finished }}
       {@const rank = ranks[id] ?? 0}
       {@const isPlayer = id === playerBetId}
+      {@const isPatronHorror = id === $patron.monsterId}
       <div class="race-lane"
         class:player-bet={isPlayer}
         class:is-leader={rank === 1 && !winnerCrossed}
@@ -816,6 +819,7 @@
           <div class="horror-name">
             {monster.name}
             {#if isPlayer}<span class="player-star">★</span>{/if}
+            {#if isPatronHorror}<span class="patron-glyph" title="Your patron" aria-label="Your patron">⛧</span>{/if}
           </div>
           <div class="horror-bets">
             {#if ($serverRaceState.betTotals[id] ?? 0) > 0}
@@ -1131,6 +1135,12 @@
     color: var(--candy-color);
     font-size: 1rem;
     animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .patron-glyph {
+    color: var(--eldritch-green);
+    font-size: 1rem;
+    margin-left: 0.3rem;
   }
 
   .horror-bets {

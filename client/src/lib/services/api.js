@@ -119,6 +119,47 @@ export async function cancelBet(raceId, sessionId) {
 }
 
 /**
+ * Pledge patronage to a horror in the current race
+ * @param {string} sessionId
+ * @param {string} monsterId
+ * @returns {Promise<{success: boolean, patron: { monsterId: string, cooldownRaces: number, trustCooldownRaces: number }}>}
+ */
+export async function pledgePatron(sessionId, monsterId) {
+  const response = await fetch(`${API_BASE}/patron`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, monsterId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `Failed to pledge patron: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Break an active patron pact early — costs a candy fine and starts a cooldown
+ * @param {string} sessionId
+ * @returns {Promise<{success: boolean, candyBalance: number, balanceToken: string, patron: object}>}
+ */
+export async function breakPact(sessionId) {
+  const response = await fetch(`${API_BASE}/patron`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `Failed to break pact: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Validate payout after race finishes (anti-cheat)
  * @param {string} raceId
  * @param {string} sessionId

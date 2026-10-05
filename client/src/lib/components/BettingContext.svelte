@@ -3,6 +3,8 @@
   import { serverRaceState, currentBet } from '../stores/game.js';
   import { history } from '../stores/history.js';
   import { formatOdds } from '../utils/odds.js';
+  import { patron, pledgePatron } from '../stores/patron.js';
+  import ConfirmDialog from './ConfirmDialog.svelte';
 
   export let monster;
 
@@ -16,6 +18,31 @@
   $: resultIsForThisMonster = latestResult?.bet?.monsterId === monster.id;
   $: won = raceFinished && resultIsForThisMonster && latestResult?.won;
   $: lost = raceFinished && resultIsForThisMonster && !latestResult?.won;
+
+  // Pledging is only offered for a horror currently in the live roster, while
+  // betting is open, the player has no other active patron, and isn't cooling
+  // down from breaking one. The server enforces the same rules.
+  $: inLiveRoster = $serverRaceState.monsters.some(m => m.id === monster.id);
+  $: bettingOpen = $serverRaceState.state === 'waiting';
+  $: canPledge = inLiveRoster && bettingOpen && !monster.isLegendary && !$patron.monsterId && $patron.cooldownRaces === 0;
+  $: isCurrentPatron = $patron.monsterId === monster.id;
+
+  let showPledgeConfirm = false;
+  let pledging = false;
+  let pledgeError = null;
+
+  async function confirmPledge() {
+    showPledgeConfirm = false;
+    pledging = true;
+    pledgeError = null;
+    try {
+      await pledgePatron(monster);
+    } catch (err) {
+      pledgeError = err.message;
+    } finally {
+      pledging = false;
+    }
+  }
 </script>
 
 <div class="betting-context card" class:state-bet={hasBetOnThis} class:state-won={won} class:state-lost={lost}>
@@ -73,10 +100,44 @@
     </div>
   {/if}
 
+  {#if isCurrentPatron}
+    <div class="patron-note" class:distrusted={$patron.trustCooldownRaces > 0}>
+      <p class="patron-note-title">⛧ Your Patron</p>
+      <p class="patron-note-detail">
+        Pledged for {$patron.racesSincePledged} {$patron.racesSincePledged === 1 ? 'race' : 'races'}
+      </p>
+      {#if $patron.trustCooldownRaces > 0}
+        <p class="patron-note-detail distrusted">
+          Trust wavers — favor returns in {$patron.trustCooldownRaces} {$patron.trustCooldownRaces === 1 ? 'race' : 'races'}
+        </p>
+      {/if}
+    </div>
+  {:else if canPledge}
+    <button
+      class="button button-primary pledge-btn"
+      on:click={() => (showPledgeConfirm = true)}
+      disabled={pledging}
+    >
+      {pledging ? 'Pledging…' : 'Pledge Patronage'}
+    </button>
+    {#if pledgeError}
+      <p class="pledge-error">{pledgeError}</p>
+    {/if}
+  {/if}
+
   <button class="button button-secondary back-btn" on:click={() => push('/')}>
     ← Back to Race
   </button>
 </div>
+
+{#if showPledgeConfirm}
+  <ConfirmDialog
+    message={`Are you sure you want to pledge patronage to ${monster.name}? While they are in the race pool they will not take kindly to you betting on rivals or breaking this pact.`}
+    confirmLabel="Pledge Patronage"
+    on:confirm={confirmPledge}
+    on:cancel={() => (showPledgeConfirm = false)}
+  />
+{/if}
 
 <style>
   .betting-context {
@@ -195,6 +256,54 @@
     color: var(--candy-color);
     line-height: 1;
     margin: 0.25rem 0;
+  }
+
+  /* ── Patronage ── */
+  .patron-note {
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--eldritch-green);
+    text-align: center;
+  }
+
+  .patron-note.distrusted {
+    border-color: var(--eldritch-red);
+  }
+
+  .patron-note-title {
+    font-family: 'Cinzel', serif;
+    letter-spacing: 1px;
+    color: var(--eldritch-green);
+    margin: 0 0 0.25rem;
+  }
+
+  .patron-note.distrusted .patron-note-title {
+    color: var(--eldritch-red);
+  }
+
+  .patron-note-detail {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .patron-note-detail.distrusted {
+    color: var(--eldritch-red);
+    margin-top: 0.25rem;
+  }
+
+  .pledge-btn {
+    width: 100%;
+    font-size: 0.8rem;
+    padding: 0.6rem 1rem;
+  }
+
+  .pledge-error {
+    color: var(--eldritch-red);
+    font-size: 0.85rem;
+    font-style: italic;
+    text-align: center;
+    margin: -0.5rem 0 0;
   }
 
   /* ── Back button ── */

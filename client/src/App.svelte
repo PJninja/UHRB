@@ -15,6 +15,8 @@
   import { createSession, validateSession } from './lib/services/api.js';
   import { startSocket, stopSocket } from './lib/services/raceSocket.js';
   import { connection } from './lib/stores/connection.js';
+  import { handleRaceUpdate as handlePatronRaceUpdate } from './lib/stores/patron.js';
+  import PatronFledToast from './lib/components/PatronFledToast.svelte';
 
   const routes = {
     '/': Home,
@@ -72,6 +74,7 @@
       startSocket((raceData) => {
         updateServerRaceState(raceData);
         setMonsters(raceData.monsters);
+        handlePatronRaceUpdate(raceData);
       });
 
       isInitializing = false;
@@ -120,6 +123,8 @@
       </div>
     </div>
   {:else}
+    <PatronFledToast />
+
     <!-- Connection Status Indicator -->
     {#if !$connection.connected}
       <div class="connection-banner">
